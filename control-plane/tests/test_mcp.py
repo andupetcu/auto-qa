@@ -30,13 +30,15 @@ async def test_run_suite_and_status_roundtrip(mcp):
 
 
 def test_mcp_http_mount_requires_bearer_token(app):
-    c = TestClient(app)
-    # unauthenticated → 401 before the MCP app ever sees the request
-    assert c.post("/mcp", json={}).status_code == 401
-    assert c.post("/mcp", json={}, headers={"Authorization": "Bearer wrong"}).status_code == 401
-    # with the token the request reaches the MCP app (any non-401 status is its own concern)
-    r = c.post("/mcp", json={}, headers={"Authorization": "Bearer testtoken"})
-    assert r.status_code != 401
+    # context manager runs the lifespan, starting the MCP session manager as uvicorn would
+    with TestClient(app) as c:
+        # unauthenticated → 401 before the MCP app ever sees the request
+        assert c.post("/mcp", json={}).status_code == 401
+        assert c.post("/mcp", json={}, headers={"Authorization": "Bearer wrong"}).status_code == 401
+        # with the token the request reaches the MCP app; it must answer at exactly /mcp
+        # (no /mcp/mcp double path, no 500 from an unstarted session manager)
+        r = c.post("/mcp", json={}, headers={"Authorization": "Bearer testtoken"})
+        assert r.status_code not in (401, 404, 307, 500)
 
 
 async def test_get_failure_bundles_empty_run(mcp):

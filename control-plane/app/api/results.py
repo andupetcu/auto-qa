@@ -1,3 +1,5 @@
+from datetime import timezone
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -20,6 +22,10 @@ def _get_result_or_404(session: Session, result_id: str) -> TestResult:
 def _to_unix(dt):
     if dt is None:
         return None
+    # SQLite returns naive datetimes; they were stored as UTC — reattach before
+    # .timestamp() or the signed-URL expiry shifts by the host's UTC offset
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
     return int(dt.timestamp())
 
 

@@ -1,7 +1,20 @@
 """FastAPI app factory."""
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # FastAPI never runs mounted sub-app lifespans; the MCP streamable-HTTP session
+    # manager (set by mount_mcp) must be started here or /mcp 500s on every request
+    sm = getattr(app.state, "mcp_session_manager", None)
+    if sm is None:
+        yield
+    else:
+        async with sm.run():
+            yield
 
 from app.api import artifacts, capabilities, internal, results, routes as routes_api, runs
 from app.db import Base, make_engine_and_sessionmaker
@@ -16,7 +29,7 @@ def create_app(settings: Settings | None = None, webhook_transport=None) -> Fast
     if settings is None:
         settings = Settings()
 
-    app = FastAPI(title="Footprints QA Control Plane", version="0.1")
+    app = FastAPI(title="Footprints QA Control Plane", version="0.1", lifespan=_lifespan)
 
     engine, session_local = make_engine_and_sessionmaker(settings.database_url)
     Base.metadata.create_all(bind=engine)

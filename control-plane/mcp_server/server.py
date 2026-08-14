@@ -61,6 +61,10 @@ class QAMCPServer:
     def streamable_http_app(self, **kwargs):
         return self._inner.streamable_http_app(**kwargs)
 
+    @property
+    def session_manager(self):
+        return self._inner.session_manager
+
 
 def build_mcp(app, settings) -> QAMCPServer:
     inner = _RawMCPServer(name="footprints-qa", version="0.1")
@@ -201,6 +205,11 @@ def mount_mcp(app, settings) -> None:
     """Best-effort mount of the MCP streamable HTTP app at /mcp. Never raises."""
     try:
         mcp = build_mcp(app, settings)
-        app.mount("/mcp", BearerAuthASGI(mcp.streamable_http_app(), settings.api_token))
+        # inner path "/" so the endpoint is exactly /mcp (default would give /mcp/mcp)
+        sub = mcp.streamable_http_app(streamable_http_path="/")
+        app.mount("/mcp", BearerAuthASGI(sub, settings.api_token))
+        # FastAPI does not run mounted sub-app lifespans; the app's own lifespan
+        # (app/main.py) starts this session manager so /mcp works over real HTTP
+        app.state.mcp_session_manager = mcp.session_manager
     except Exception:
         logger.exception("MCP mount failed; continuing without /mcp")

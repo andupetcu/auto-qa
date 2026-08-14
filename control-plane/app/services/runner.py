@@ -10,7 +10,9 @@ from app.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-_BROWSER_WORKER_DIR = Path(__file__).resolve().parents[2] / "browser-worker"
+# control-plane/app/services/runner.py -> repo root is parents[3]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_BROWSER_WORKER_DIR = _REPO_ROOT / "browser-worker"
 
 
 def maybe_spawn(run: TestRun, settings: Settings) -> None:
@@ -24,7 +26,7 @@ def maybe_spawn(run: TestRun, settings: Settings) -> None:
 
 
 def _spawn(run: TestRun, settings: Settings) -> None:
-    port = os.environ.get("QA_PORT", "8000")
+    port = os.environ.get("QA_CP_PORT", "8787")
     env = os.environ.copy()
     env.update(
         {
@@ -34,14 +36,18 @@ def _spawn(run: TestRun, settings: Settings) -> None:
             "QA_RUN_ROLES": json.dumps(run.requested_roles or []),
             "QA_CP_URL": f"http://127.0.0.1:{port}/api/v1",
             "QA_API_TOKEN": settings.api_token,
+            "QA_ARTIFACTS_DIR": str(Path(settings.artifacts_dir).resolve()),
         }
     )
+    log_dir = _REPO_ROOT / "var" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log = open(log_dir / f"runner-{run.id}.log", "ab")
     subprocess.Popen(
         ["npx", "tsx", "src/runner.ts"],
         cwd=str(_BROWSER_WORKER_DIR),
         env=env,
         stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log,
+        stderr=log,
         start_new_session=True,
     )
