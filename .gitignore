@@ -1,0 +1,22 @@
+# secrets & local state
+.env
+var/
+*.db
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# node
+node_modules/
+dist/
+test-results/
+playwright-report/
+.auth/
+
+# misc
+.DS_Store
+.playwright-mcp/
+logs/
