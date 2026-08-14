@@ -1,4 +1,5 @@
 import pytest
+from fastapi.testclient import TestClient
 
 EXPECTED_TOOLS = {
     "capabilities", "list_routes", "run_suite", "get_run_status",
@@ -26,6 +27,16 @@ async def test_run_suite_and_status_roundtrip(mcp):
     status = await mcp.call_tool("get_run_status", {"run_id": run_id})
     status_payload = status[1] if isinstance(status, tuple) else status
     assert status_payload["status"] == "queued"
+
+
+def test_mcp_http_mount_requires_bearer_token(app):
+    c = TestClient(app)
+    # unauthenticated → 401 before the MCP app ever sees the request
+    assert c.post("/mcp", json={}).status_code == 401
+    assert c.post("/mcp", json={}, headers={"Authorization": "Bearer wrong"}).status_code == 401
+    # with the token the request reaches the MCP app (any non-401 status is its own concern)
+    r = c.post("/mcp", json={}, headers={"Authorization": "Bearer testtoken"})
+    assert r.status_code != 401
 
 
 async def test_get_failure_bundles_empty_run(mcp):

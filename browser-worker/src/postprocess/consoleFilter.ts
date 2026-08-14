@@ -30,7 +30,8 @@ export function filterConsole(lines: ConsoleLine[], cfg: ConsoleCfg): ConsoleEnt
 
   for (const line of relevant) {
     const level = line.level as 'error' | 'warning';
-    const key = `${level}|${normalize(line.text)}`;
+    const text = typeof line.text === 'string' ? line.text : String(line.text ?? '');
+    const key = `${level}|${normalize(text)}`;
     const existing = byKey.get(key);
     if (existing) {
       existing.count += 1;
@@ -42,7 +43,7 @@ export function filterConsole(lines: ConsoleLine[], cfg: ConsoleCfg): ConsoleEnt
     byKey.set(key, {
       level,
       kind: line.kind,
-      text: line.text,
+      text,
       source: null,
       raw_source,
       stack: line.stack ?? null,

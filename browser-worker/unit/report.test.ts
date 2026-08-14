@@ -73,6 +73,20 @@ describe('parseReport', () => {
     expect(timed).toMatchObject({ status: 'timed_out', role: 'anon' });
   });
 
+  test('a test with an empty results array is reported as skipped, not a crash', () => {
+    const r = parseReport({
+      suites: [{
+        title: 's', file: 'matrix.spec.ts',
+        specs: [{
+          title: 'matrix / as user -> render', file: 'matrix.spec.ts', line: 12,
+          tests: [{ projectName: 'user', results: [] }],
+        }],
+      }],
+    } as any);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ status: 'skipped', duration_ms: 0, error_message: null });
+  });
+
   test('non-matrix titles get null route and project role', () => {
     const r = parseReport({
       suites: [{

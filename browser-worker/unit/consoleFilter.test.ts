@@ -45,6 +45,15 @@ describe('filterConsole', () => {
     expect(rows[0].source).toBeNull();
   });
 
+  test('tolerates lines with missing text instead of crashing', () => {
+    const rows = filterConsole([
+      line({ text: undefined as unknown as string }),
+      line({ text: 'real error' }),
+    ], { topN: 20 });
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    expect(rows.some(r => r.text === 'real error')).toBe(true);
+  });
+
   test('carries the stack through for later frame resolution (doc 06 §2)', () => {
     const rows = filterConsole([
       line({ kind: 'pageerror', stack: 'TypeError: boom\n    at https://app.test/bundle/index.js:1:88214' }),

@@ -7,7 +7,7 @@ function makeMap(): string {
   gen.addMapping({
     generated: { line: 1, column: 10 },
     original: { line: 42, column: 5 },
-    source: 'webpack://app/src/components/Budget.tsx',
+    source: 'webpack://app/./src/components/Budget.tsx',
   });
   return gen.toString();
 }

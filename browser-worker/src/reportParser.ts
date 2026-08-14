@@ -64,15 +64,16 @@ export function parseReport(report: { suites?: RawSuite[] }): ParsedResult[] {
     const route_path = routeMatch ? routeMatch[1] : null;
 
     for (const test of spec.tests ?? []) {
-      const lastResult = test.results[test.results.length - 1];
+      // Playwright emits results: [] for tests that never executed — report as skipped
+      const lastResult = test.results?.[test.results.length - 1];
       results.push({
         test_name: spec.title,
         test_file: `${spec.file}:${spec.line}`,
         route_path,
         role: test.projectName,
-        status: STATUS_MAP[lastResult.status] ?? lastResult.status,
-        duration_ms: lastResult.duration,
-        error_message: lastResult.error?.message ?? null,
+        status: lastResult ? (STATUS_MAP[lastResult.status] ?? lastResult.status) : 'skipped',
+        duration_ms: lastResult?.duration ?? 0,
+        error_message: lastResult?.error?.message ?? null,
       });
     }
   }

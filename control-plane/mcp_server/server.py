@@ -8,12 +8,41 @@ normally), while call_tool() bypasses the SDK's CallToolResult wrapping and
 returns the tool handler's dict directly, since that's the shape our own tests
 and Hermes-side callers expect.
 """
+import hmac
+import json
 import logging
 
 import httpx
 from mcp.server.mcpserver import MCPServer as _RawMCPServer
 
 logger = logging.getLogger(__name__)
+
+
+class BearerAuthASGI:
+    """Requires `Authorization: Bearer <token>` before dispatching to the inner app.
+
+    The system has a single static token (doc 00 auth model), so gating the /mcp
+    mount with it makes the MCP layer exactly as privileged as its caller — the
+    internal ASGI client's embedded token grants nothing the caller hasn't proven.
+    """
+
+    def __init__(self, inner, token: str):
+        self._inner = inner
+        self._token = token
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            headers = dict(scope.get("headers") or [])
+            auth = (headers.get(b"authorization") or b"").decode()
+            expected = f"Bearer {self._token}"
+            if not hmac.compare_digest(auth, expected):
+                body = json.dumps({"title": "Unauthorized", "status": 401,
+                                   "detail": "missing or invalid bearer token"}).encode()
+                await send({"type": "http.response.start", "status": 401,
+                            "headers": [(b"content-type", b"application/problem+json")]})
+                await send({"type": "http.response.body", "body": body})
+                return
+        await self._inner(scope, receive, send)
 
 
 class QAMCPServer:
@@ -172,6 +201,6 @@ def mount_mcp(app, settings) -> None:
     """Best-effort mount of the MCP streamable HTTP app at /mcp. Never raises."""
     try:
         mcp = build_mcp(app, settings)
-        app.mount("/mcp", mcp.streamable_http_app())
+        app.mount("/mcp", BearerAuthASGI(mcp.streamable_http_app(), settings.api_token))
     except Exception:
         logger.exception("MCP mount failed; continuing without /mcp")
