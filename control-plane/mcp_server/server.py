@@ -83,7 +83,7 @@ class QAMCPServer:
 
 
 def build_mcp(app, settings) -> QAMCPServer:
-    inner = _RawMCPServer(name="auto-qa", version="0.1")
+    inner = _RawMCPServer(name="auto-qa", version="0.2")
 
     def _client() -> httpx.AsyncClient:
         return httpx.AsyncClient(
@@ -108,6 +108,12 @@ def build_mcp(app, settings) -> QAMCPServer:
     async def _patch(path: str, json_body: dict | None = None):
         async with _client() as client:
             resp = await client.patch(path, json=json_body or {})
+            resp.raise_for_status()
+            return resp.json()
+
+    async def _put(path: str, json_body: dict | None = None):
+        async with _client() as client:
+            resp = await client.put(path, json=json_body or {})
             resp.raise_for_status()
             return resp.json()
 
@@ -160,6 +166,39 @@ def build_mcp(app, settings) -> QAMCPServer:
     handlers["get_run_status"] = get_run_status
 
     @inner.tool()
+    async def get_run_results(
+        run_id: str,
+        status: str | None = None,
+        role: str | None = None,
+        route: str | None = None,
+        browser: str | None = None,
+        flaky: bool | None = None,
+        limit: int | None = None,
+    ) -> dict:
+        """Return bounded case-level results for a run with optional filters."""
+        data = await _get(
+            f"/api/v1/runs/{run_id}/results",
+            {
+                "status": status,
+                "role": role,
+                "route": route,
+                "browser": browser,
+                "flaky": flaky,
+                "limit": limit,
+            },
+        )
+        return {"run_id": run_id, "count": len(data), "results": data}
+
+    handlers["get_run_results"] = get_run_results
+
+    @inner.tool()
+    async def cancel_run(run_id: str) -> dict:
+        """Cancel a queued or running run and terminate its worker tree."""
+        return await _post(f"/api/v1/runs/{run_id}/cancel")
+
+    handlers["cancel_run"] = cancel_run
+
+    @inner.tool()
     async def get_failure_bundles(
         run_id: str,
         severity_min: str | None = None,
@@ -210,11 +249,15 @@ def build_mcp(app, settings) -> QAMCPServer:
     @inner.tool()
     async def rerun(
         run_id: str,
-        scope: str,
+        scope: str = "failed",
+        result_id: str | None = None,
         base_url: str | None = None,
         app_version: str | None = None,
     ) -> dict:
-        body = {"scope": scope}
+        """Rerun failed/affected/full scope or one exact route-backed result."""
+        body: dict = {"scope": scope}
+        if result_id is not None:
+            body["result_id"] = result_id
         if base_url is not None:
             body["base_url"] = base_url
         if app_version is not None:
@@ -275,6 +318,78 @@ def build_mcp(app, settings) -> QAMCPServer:
         return {"projects": data}
 
     handlers["list_projects"] = list_projects
+
+    @inner.tool()
+    async def list_schedules() -> dict:
+        """List durable project schedules."""
+        data = await _get("/api/v1/schedules")
+        return {"schedules": data}
+
+    handlers["list_schedules"] = list_schedules
+
+    @inner.tool()
+    async def get_schedule(project: str) -> dict:
+        """Get the schedule associated with one project."""
+        return await _get(f"/api/v1/schedules/{project}")
+
+    handlers["get_schedule"] = get_schedule
+
+    @inner.tool()
+    async def create_schedule(project: str, cron: str, enabled: bool = True) -> dict:
+        """Create or replace a project's UTC schedule."""
+        return await _put(
+            f"/api/v1/schedules/{project}",
+            {"cron": cron, "enabled": enabled},
+        )
+
+    handlers["create_schedule"] = create_schedule
+
+    @inner.tool()
+    async def update_schedule(
+        project: str,
+        cron: str | None = None,
+        enabled: bool | None = None,
+    ) -> dict:
+        """Update cron and/or enabled state for a project schedule."""
+        body: dict = {}
+        if cron is not None:
+            body["cron"] = cron
+        if enabled is not None:
+            body["enabled"] = enabled
+        return await _patch(f"/api/v1/schedules/{project}", body)
+
+    handlers["update_schedule"] = update_schedule
+
+    @inner.tool()
+    async def pause_schedule(project: str) -> dict:
+        """Pause a project schedule without deleting its cron expression."""
+        return await _post(f"/api/v1/schedules/{project}/pause")
+
+    handlers["pause_schedule"] = pause_schedule
+
+    @inner.tool()
+    async def resume_schedule(project: str) -> dict:
+        """Resume a paused project schedule."""
+        return await _post(f"/api/v1/schedules/{project}/resume")
+
+    handlers["resume_schedule"] = resume_schedule
+
+    @inner.tool()
+    async def run_schedule_now(project: str) -> dict:
+        """Fire a schedule immediately while enforcing overlap policy."""
+        return await _post(f"/api/v1/schedules/{project}/run")
+
+    handlers["run_schedule_now"] = run_schedule_now
+
+    @inner.tool()
+    async def get_schedule_history(project: str, limit: int | None = None) -> dict:
+        """Return bounded schedule-triggered run history for one project."""
+        data = await _get(
+            f"/api/v1/schedules/{project}/history", {"limit": limit}
+        )
+        return {"project": project, "count": len(data), "runs": data}
+
+    handlers["get_schedule_history"] = get_schedule_history
 
     return QAMCPServer(inner, handlers)
 

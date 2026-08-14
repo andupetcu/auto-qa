@@ -1,10 +1,17 @@
+"""Public MCP contract tests for deterministic Auto QA operator tools."""
+
 import pytest
 from fastapi.testclient import TestClient
 
+from conftest import create_run, ingest, result_payload
+
 EXPECTED_TOOLS = {
-    "capabilities", "list_routes", "run_suite", "get_run_status",
+    "capabilities", "list_routes", "run_suite", "get_run_status", "get_run_results",
+    "cancel_run",
     "get_failure_bundles", "get_console_logs", "get_har", "get_artifacts", "rerun",
     "list_projects", "create_project", "update_project",
+    "list_schedules", "get_schedule", "create_schedule", "update_schedule",
+    "pause_schedule", "resume_schedule", "run_schedule_now", "get_schedule_history",
 }
 
 
@@ -68,6 +75,91 @@ async def test_update_project_via_mcp_remaps_base_url(mcp):
                               {"name": "updproj", "base_url": "https://two.example.test"})
     updated = out[1] if isinstance(out, tuple) else out
     assert updated["base_url_default"] == "https://two.example.test"
+
+
+async def test_get_run_results_filters_cases(mcp, client):
+    run_id = create_run(client)
+    ingest(
+        client,
+        run_id,
+        [
+            result_payload("passed", route="/", role="anon"),
+            result_payload(
+                "failed",
+                route="/campaigns/reports",
+                role="user",
+                console_summary=[{"level": "error", "text": "boom"}],
+            ),
+        ],
+    )
+
+    out = await mcp.call_tool(
+        "get_run_results",
+        {"run_id": run_id, "status": "failed", "role": "user", "limit": 10},
+    )
+    payload = out[1] if isinstance(out, tuple) else out
+    assert payload["run_id"] == run_id
+    assert payload["count"] == 1
+    assert payload["results"][0]["route_path"] == "/campaigns/reports"
+    assert payload["results"][0]["console_summary"][0]["text"] == "boom"
+
+    retry = await mcp.call_tool(
+        "rerun",
+        {
+            "run_id": run_id,
+            "scope": "result",
+            "result_id": payload["results"][0]["id"],
+        },
+    )
+    retry_payload = retry[1] if isinstance(retry, tuple) else retry
+    retry_run = client.get(f"/api/v1/runs/{retry_payload['run_id']}").json()
+    assert retry_run["requested_routes"] == ["/campaigns/reports"]
+    assert retry_run["requested_roles"] == ["user"]
+
+
+async def test_cancel_run_via_mcp(mcp, client):
+    run_id = create_run(client)
+    out = await mcp.call_tool("cancel_run", {"run_id": run_id})
+    payload = out[1] if isinstance(out, tuple) else out
+    assert payload == {"run_id": run_id, "status": "canceled"}
+    assert client.get(f"/api/v1/runs/{run_id}").json()["status"] == "canceled"
+
+
+async def test_schedule_lifecycle_via_mcp(mcp):
+    created = await mcp.call_tool(
+        "create_schedule",
+        {"project": "fai", "cron": "*/15 * * * *", "enabled": True},
+    )
+    created_payload = created[1] if isinstance(created, tuple) else created
+    assert created_payload["cron"] == "*/15 * * * *"
+
+    listed = await mcp.call_tool("list_schedules")
+    listed_payload = listed[1] if isinstance(listed, tuple) else listed
+    assert listed_payload["schedules"][0]["project"] == "fai"
+
+    updated = await mcp.call_tool(
+        "update_schedule", {"project": "fai", "cron": "0 * * * *"}
+    )
+    updated_payload = updated[1] if isinstance(updated, tuple) else updated
+    assert updated_payload["cron"] == "0 * * * *"
+
+    paused = await mcp.call_tool("pause_schedule", {"project": "fai"})
+    paused_payload = paused[1] if isinstance(paused, tuple) else paused
+    assert paused_payload["enabled"] is False
+
+    resumed = await mcp.call_tool("resume_schedule", {"project": "fai"})
+    resumed_payload = resumed[1] if isinstance(resumed, tuple) else resumed
+    assert resumed_payload["enabled"] is True
+
+    fired = await mcp.call_tool("run_schedule_now", {"project": "fai"})
+    fired_payload = fired[1] if isinstance(fired, tuple) else fired
+    assert fired_payload["status"] == "queued"
+
+    history = await mcp.call_tool(
+        "get_schedule_history", {"project": "fai", "limit": 10}
+    )
+    history_payload = history[1] if isinstance(history, tuple) else history
+    assert history_payload["runs"][0]["id"] == fired_payload["run_id"]
 
 
 async def test_get_failure_bundles_empty_run(mcp):

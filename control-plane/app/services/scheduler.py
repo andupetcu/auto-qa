@@ -19,8 +19,8 @@ def is_due(schedule_cron: str, anchor: datetime, now: datetime) -> bool:
     """True once the first cron boundary strictly after `anchor` has elapsed.
 
     `anchor` is the last scheduled time, or — for a project that has never run — its
-    creation time. Anchoring at creation is the v0.3 fix: a newly-created project fires
-    at its next real cron boundary rather than catch-up-firing on the next tick.
+    creation time. Anchoring at creation prevents a newly-created project from
+    catch-up-firing on the next scheduler tick.
     """
     next_fire = croniter(schedule_cron, _as_utc(anchor)).get_next(datetime)
     return next_fire <= now

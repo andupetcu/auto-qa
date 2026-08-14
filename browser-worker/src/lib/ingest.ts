@@ -38,11 +38,19 @@ export interface ResultIngest extends BuildResultIngestInput {
   viewport: string;
 }
 
-export function buildResultIngest(input: BuildResultIngestInput): ResultIngest {
+export interface ExecutionMetadata {
+  browser: RunnerConfig['browser'];
+  viewport: string;
+}
+
+export function buildResultIngest(
+  input: BuildResultIngestInput,
+  execution: ExecutionMetadata = { browser: 'chromium', viewport: '1440x900' },
+): ResultIngest {
   return {
     ...input,
-    browser: 'chromium',
-    viewport: '1440x900',
+    browser: execution.browser,
+    viewport: execution.viewport,
   };
 }
 

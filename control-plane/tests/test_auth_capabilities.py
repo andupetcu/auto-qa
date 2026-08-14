@@ -1,3 +1,5 @@
+"""Authentication boundary and capability-version contract tests."""
+
 from fastapi.testclient import TestClient
 
 
@@ -19,7 +21,7 @@ def test_capabilities_shape(client):
     caps = r.json()
     for t in ("trace", "har", "console", "screenshot", "video"):
         assert t in caps["artifact_types"]
-    assert caps["version"] == "0.1"
+    assert caps["version"] == "0.2"
     assert caps["roles"] == ["user", "anon"]
     # the New-run drawer sources these instead of hardcoding them
     assert "chromium" in caps["browsers"]

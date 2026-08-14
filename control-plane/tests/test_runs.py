@@ -1,3 +1,7 @@
+"""Run creation, result rerun and idempotency API contracts."""
+
+import json
+
 from conftest import create_run, finalize, ingest, result_payload, sig_input
 
 
@@ -101,6 +105,81 @@ def test_rerun_failed_scope_with_only_suite_failures_is_400(client):
     r = client.post(f"/api/v1/runs/{rid}/rerun", json={"scope": "failed"})
     assert r.status_code == 400
     assert r.headers["content-type"].startswith("application/problem+json")
+
+
+def test_run_creation_rejects_multi_browser_or_viewport_matrix(client):
+    response = client.post(
+        "/api/v1/runs",
+        json={
+            "project": "fai",
+            "routes": ["/"],
+            "browsers": ["chromium", "firefox"],
+            "viewports": ["1440x900"],
+        },
+    )
+    assert response.status_code == 422
+
+    response = client.post(
+        "/api/v1/runs",
+        json={
+            "project": "fai",
+            "routes": ["/"],
+            "browsers": ["chromium"],
+            "viewports": ["1440x900", "390x844"],
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_rerun_single_result_preserves_case_matrix(client, app, settings):
+    run_id = create_run(
+        client,
+        routes=["/campaigns/reports"],
+        roles=["user", "anon"],
+        browsers=["firefox"],
+        viewports=["390x844"],
+    )
+    ingest(
+        client,
+        run_id,
+        [
+            result_payload(
+                "failed",
+                route="/campaigns/reports",
+                role="anon",
+                browser="firefox",
+                viewport="390x844",
+                signature_input=sig_input(
+                    route="/campaigns/reports", role="anon"
+                ),
+            )
+        ],
+    )
+    finalize(client, run_id)
+    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()[0]["id"]
+
+    response = client.post(
+        f"/api/v1/runs/{run_id}/rerun",
+        json={"scope": "result", "result_id": result_id},
+    )
+
+    assert response.status_code == 202, response.text
+    retry = client.get(f"/api/v1/runs/{response.json()['run_id']}").json()
+    assert retry["parent_run_id"] == run_id
+    assert retry["requested_routes"] == ["/campaigns/reports"]
+    assert retry["requested_roles"] == ["anon"]
+    assert retry["browsers"] == ["firefox"]
+    assert retry["viewports"] == ["390x844"]
+
+    from app.db import Project, TestRun
+    from app.services.runner import build_spawn_env
+
+    with app.state.SessionLocal() as session:
+        retry_row = session.get(TestRun, retry["id"])
+        project = session.get(Project, retry_row.project_id)
+        env = build_spawn_env(retry_row, project, settings)
+    assert json.loads(env["QA_RUN_BROWSERS"]) == ["firefox"]
+    assert json.loads(env["QA_RUN_VIEWPORTS"]) == ["390x844"]
 
 
 def test_rerun_full_scope_with_base_url_override(client):

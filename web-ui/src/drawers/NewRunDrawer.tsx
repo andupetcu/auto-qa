@@ -253,20 +253,20 @@ export function NewRunDrawer({ open, onClose }: { open: boolean; onClose: () => 
             ))}
           </div>
         </Field>
-        <Field label="Browsers">
+        <Field label="Browser" hint="One browser per run; matrix fan-out is planned">
           <div className={styles.chipRow}>
             {browserOptions.map((b) => (
               <span
                 key={b}
                 className={`${styles.chip} ${browsers.has(b) ? styles.chipSelected : ''}`}
-                onClick={() => setBrowsers((s) => toggleSet(s, b))}
+                onClick={() => setBrowsers(new Set([b]))}
               >
                 {b}
               </span>
             ))}
           </div>
         </Field>
-        <Field label="Viewports">
+        <Field label="Viewport" hint="One viewport per run">
           <div className={styles.chipRow}>
             {viewportOptions.map((v) => (
               <span
@@ -274,7 +274,7 @@ export function NewRunDrawer({ open, onClose }: { open: boolean; onClose: () => 
                 className={`${styles.chip} ${styles.monoChip} ${
                   viewports.has(v) ? styles.chipSelected : ''
                 }`}
-                onClick={() => setViewports((s) => toggleSet(s, v))}
+                onClick={() => setViewports(new Set([v]))}
               >
                 {v}
               </span>

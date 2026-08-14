@@ -1,7 +1,9 @@
+"""Run lifecycle, result queries, cancellation and deterministic rerun APIs."""
+
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Query, Request
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from app.db import FailureCluster, Project, Route, TestResult, TestRun
@@ -28,9 +30,19 @@ class RunCreate(BaseModel):
     app_version: str | None = None
     capture: dict | None = None
 
+    @field_validator("browsers", "viewports")
+    @classmethod
+    def require_single_execution_selector(
+        cls, value: list[str] | None
+    ) -> list[str] | None:
+        if value is not None and len(value) > 1:
+            raise ValueError("select at most one value per worker run")
+        return value
+
 
 class RerunBody(BaseModel):
-    scope: Literal["failed", "affected", "full"]
+    scope: Literal["failed", "affected", "full", "result"]
+    result_id: str | None = None
     base_url: str | None = None
     app_version: str | None = None
 
@@ -56,7 +68,7 @@ def _project_name(session: Session, project_id: str | None) -> str | None:
     return project.name if project else None
 
 
-def create_run_row(
+def _create_run_row_unlocked(
     session: Session,
     settings: Settings,
     project: Project,
@@ -69,12 +81,10 @@ def create_run_row(
     viewports: list[str] | None = None,
     capture: dict | None = None,
     idempotency_key: str | None = None,
+    parent_run_id: str | None = None,
     validate_routes: bool = True,
 ) -> TestRun:
-    """Shared run-creation core: validates routes, persists a queued TestRun, spawns
-    the worker. Used by both POST /runs and POST /projects/{id}/run (and, in future,
-    the scheduler) so project-scoped run creation never drifts from the public API.
-    """
+    """Persist and spawn one run while the caller holds the project run lock."""
     if validate_routes and routes != ["ALL"]:
         known_paths = {
             r.path for r in session.query(Route).filter_by(project_id=project.id).all()
@@ -100,7 +110,7 @@ def create_run_row(
         viewports=viewports or [],
         capture_config=capture or {},
         idempotency_key=idempotency_key,
-        parent_run_id=None,
+        parent_run_id=parent_run_id,
         started_at=None,
         ended_at=None,
         status="queued",
@@ -113,6 +123,64 @@ def create_run_row(
     maybe_spawn(run, project, settings)  # sets run.worker_pid
     session.commit()
     return run
+
+
+def create_run_row(
+    session: Session,
+    settings: Settings,
+    project: Project,
+    routes: list[str],
+    roles: list[str] | None = None,
+    base_url: str | None = None,
+    app_version: str | None = None,
+    trigger: str = "manual",
+    browsers: list[str] | None = None,
+    viewports: list[str] | None = None,
+    capture: dict | None = None,
+    idempotency_key: str | None = None,
+    parent_run_id: str | None = None,
+    validate_routes: bool = True,
+) -> TestRun:
+    """Serialize run creation and prevent manual work from entering an active schedule."""
+    from app.services.project_run_lock import project_run_lock
+
+    with project_run_lock(project.id):
+        session.expire_all()
+        project = session.get(Project, project.id)
+        if project is None:
+            raise ProblemException(400, "Unknown project", "Project was deleted")
+        if trigger != "schedule":
+            active_schedule = (
+                session.query(TestRun)
+                .filter(
+                    TestRun.project_id == project.id,
+                    TestRun.trigger == "schedule",
+                    TestRun.status.in_(("queued", "running")),
+                )
+                .first()
+            )
+            if active_schedule is not None:
+                raise ProblemException(
+                    409,
+                    "Scheduled run active",
+                    f"Project {project.name!r} has active scheduled run {active_schedule.id}",
+                )
+        return _create_run_row_unlocked(
+            session,
+            settings,
+            project,
+            routes,
+            roles=roles,
+            base_url=base_url,
+            app_version=app_version,
+            trigger=trigger,
+            browsers=browsers,
+            viewports=viewports,
+            capture=capture,
+            idempotency_key=idempotency_key,
+            parent_run_id=parent_run_id,
+            validate_routes=validate_routes,
+        )
 
 
 @router.post("/runs", status_code=202)
@@ -184,10 +252,31 @@ def cancel_run(run_id: str, session: Session = Depends(get_session)):
 
 
 @router.get("/runs/{run_id}/results")
-def list_results(run_id: str, session: Session = Depends(get_session)):
+def list_results(
+    run_id: str,
+    status: str | None = None,
+    role: str | None = None,
+    route: str | None = None,
+    browser: str | None = None,
+    flaky: bool | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    session: Session = Depends(get_session),
+):
+    """Return a bounded, filterable set of case results for one run."""
     _get_run_or_404(session, run_id)
-    rows = session.query(TestResult).filter_by(run_id=run_id).order_by(TestResult.id).all()
-    return [serialize_result(r) for r in rows]
+    query = session.query(TestResult).filter_by(run_id=run_id)
+    if status is not None:
+        query = query.filter(TestResult.status == status)
+    if role is not None:
+        query = query.filter(TestResult.role == role)
+    if route is not None:
+        query = query.filter(TestResult.route_path == route)
+    if browser is not None:
+        query = query.filter(TestResult.browser == browser)
+    if flaky is not None:
+        query = query.filter(TestResult.flaky == flaky)
+    rows = query.order_by(TestResult.id).limit(limit).all()
+    return [serialize_result(row) for row in rows]
 
 
 @router.get("/runs/{run_id}/bundles")
@@ -220,7 +309,34 @@ def rerun_run(
     project = session.get(Project, parent.project_id) if parent.project_id else None
     base_url = body.base_url or parent.base_url
 
-    if body.scope in ("failed", "affected"):
+    requested_roles = parent.requested_roles
+    browsers = parent.browsers
+    viewports = parent.viewports
+    if body.scope == "result":
+        if body.result_id is None:
+            raise ProblemException(
+                400,
+                "Result id required",
+                "scope=result requires result_id",
+            )
+        target = session.get(TestResult, body.result_id)
+        if target is None or target.run_id != run_id:
+            raise ProblemException(
+                404,
+                "Result not found",
+                f"No result {body.result_id!r} belongs to run {run_id}",
+            )
+        if not target.route_path:
+            raise ProblemException(
+                400,
+                "Result is not rerunnable",
+                "Suite results without a route cannot be retried individually",
+            )
+        routes = [target.route_path]
+        requested_roles = [target.role] if target.role else parent.requested_roles
+        browsers = [target.browser] if target.browser else parent.browsers
+        viewports = [target.viewport] if target.viewport else parent.viewports
+    elif body.scope in ("failed", "affected"):
         failed = (
             session.query(TestResult)
             .filter_by(run_id=run_id, status="failed", flaky=False)
@@ -236,32 +352,28 @@ def rerun_run(
     else:  # full
         routes = list(parent.requested_routes or [])
 
-    new_run_id = new_id("run")
-    new_run = TestRun(
-        id=new_run_id,
-        project_id=parent.project_id,
-        trigger="manual",
-        base_url=base_url,
-        app_version=body.app_version if body.app_version is not None else parent.app_version,
-        requested_routes=routes,
-        requested_roles=parent.requested_roles,
-        browsers=parent.browsers,
-        viewports=parent.viewports,
-        capture_config=parent.capture_config,
-        idempotency_key=None,
-        parent_run_id=run_id,
-        started_at=None,
-        ended_at=None,
-        status="queued",
-        totals=None,
-        detail=None,
-    )
-    session.add(new_run)
-    session.commit()
-
+    if len(browsers or []) > 1 or len(viewports or []) > 1:
+        raise ProblemException(
+            409,
+            "Execution matrix requires fan-out",
+            "Retry one browser and viewport result at a time in Phase 1",
+        )
     if project is None:
         project = _get_project_or_400(session, DEFAULT_PROJECT_NAME)
-    maybe_spawn(new_run, project, settings)  # sets new_run.worker_pid
-    session.commit()
+    new_run = create_run_row(
+        session,
+        settings,
+        project,
+        routes=routes,
+        roles=requested_roles,
+        base_url=base_url,
+        app_version=body.app_version if body.app_version is not None else parent.app_version,
+        trigger="manual",
+        browsers=browsers,
+        viewports=viewports,
+        capture=parent.capture_config,
+        parent_run_id=run_id,
+        validate_routes=False,
+    )
 
-    return {"run_id": new_run_id, "status": "queued"}
+    return {"run_id": new_run.id, "status": "queued"}

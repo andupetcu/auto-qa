@@ -133,6 +133,8 @@ def test_build_spawn_env_carries_project_payload(client, app, settings):
     assert env["QA_RUN_BASE_URL"] == "https://studio.example.test"
     assert json.loads(env["QA_RUN_SELECTORS"])["appShell"] == "#root"
     assert json.loads(env["QA_RUN_ROLE_MATRIX"])["/"]["user"] == "render"
+    assert json.loads(env["QA_RUN_BROWSERS"]) == []
+    assert json.loads(env["QA_RUN_VIEWPORTS"]) == []
     roles = json.loads(env["QA_RUN_ROLES_CONFIG"])
     assert {"name": "user", "credential_ref": "QA_CRED_USER"} in roles
 

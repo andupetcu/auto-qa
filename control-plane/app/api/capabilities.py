@@ -1,3 +1,5 @@
+"""Runtime capability inventory exposed to REST, UI and MCP clients."""
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -19,7 +21,7 @@ def get_capabilities(
 ):
     projects = [p.name for p in session.query(Project).order_by(Project.id).all()]
     return {
-        "version": "0.1",
+        "version": "0.2",
         "roles": settings.roles_list,
         "artifact_types": ARTIFACT_TYPES,
         "browsers": BROWSERS,

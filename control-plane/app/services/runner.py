@@ -24,6 +24,8 @@ def build_spawn_env(run: TestRun, project: Project, settings: Settings) -> dict[
         "QA_RUN_BASE_URL": run.base_url,
         "QA_RUN_ROUTES": json.dumps(run.requested_routes or []),
         "QA_RUN_ROLES": json.dumps(run.requested_roles or []),
+        "QA_RUN_BROWSERS": json.dumps(run.browsers or []),
+        "QA_RUN_VIEWPORTS": json.dumps(run.viewports or []),
         "QA_CP_URL": f"http://127.0.0.1:{port}/api/v1",
         "QA_API_TOKEN": settings.api_token,
         "QA_ARTIFACTS_DIR": str(Path(settings.artifacts_dir).resolve()),

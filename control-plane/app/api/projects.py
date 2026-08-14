@@ -97,6 +97,17 @@ def get_project_by_id_or_name(session: Session, id_or_name: str) -> Project:
     return project
 
 
+def _validate_schedule_cron(expression: str) -> None:
+    try:
+        croniter(expression, datetime.now(timezone.utc)).get_next(datetime)
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ProblemException(
+            400,
+            "Invalid cron expression",
+            f"Cron expression is invalid: {expression!r}",
+        ) from exc
+
+
 def _next_run_at(project: Project, now: datetime) -> str | None:
     if not project.enabled or not project.schedule_cron:
         return None
@@ -164,6 +175,8 @@ def create_project(
 ):
     _require_safe("project", body.name)
     _validate_roles(body.roles)
+    if body.schedule_cron is not None:
+        _validate_schedule_cron(body.schedule_cron)
     existing = session.query(Project).filter_by(name=body.name).first()
     if existing is not None:
         raise ProblemException(
@@ -171,6 +184,7 @@ def create_project(
         )
 
     roles = [r.model_dump(exclude_none=True) for r in body.roles] if body.roles else DEFAULT_ROLES
+    now = datetime.now(timezone.utc)
     project = Project(
         id=new_id("prj"),
         name=body.name,
@@ -178,8 +192,9 @@ def create_project(
         selectors=body.selectors or {},
         roles=roles,
         role_matrix=body.role_matrix or {},
-        created_at=datetime.now(timezone.utc),
+        created_at=now,
         schedule_cron=body.schedule_cron,
+        last_scheduled_at=now if body.schedule_cron is not None else None,
         max_parallel=body.max_parallel if body.max_parallel is not None else 2,
         enabled=body.enabled if body.enabled is not None else True,
     )
@@ -220,6 +235,7 @@ def patch_project(
 ):
     _validate_roles(body.roles)
     project = _get_project_or_404(session, name)
+    was_enabled = project.enabled
 
     if body.base_url_default is not None:
         project.base_url_default = body.base_url_default
@@ -232,11 +248,15 @@ def patch_project(
     if body.routes is not None:
         _replace_routes(session, project, body.routes)
     if body.schedule_cron is not None:
+        _validate_schedule_cron(body.schedule_cron)
         project.schedule_cron = body.schedule_cron
+        project.last_scheduled_at = datetime.now(timezone.utc)
     if body.max_parallel is not None:
         project.max_parallel = body.max_parallel
     if body.enabled is not None:
         project.enabled = body.enabled
+        if body.enabled and not was_enabled and project.schedule_cron:
+            project.last_scheduled_at = datetime.now(timezone.utc)
 
     session.commit()
     return _serialize(session, project, settings)

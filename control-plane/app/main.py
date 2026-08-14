@@ -16,7 +16,8 @@ class _SPAStaticFiles(StaticFiles):
     """Serve the built SPA. Two local-only conveniences:
     - fall back to index.html for client-side routes so deep links/refreshes don't 404;
     - inject the API token into index.html so the same-origin UI auto-connects with no
-      login (the control plane binds to 127.0.0.1, so the token never leaves the host).
+      separate login. Deployments must restrict /ui to trusted clients because every UI
+      client receives that bearer token.
     """
 
     def __init__(self, *args, api_token: str = "", **kwargs):
@@ -45,8 +46,12 @@ async def _scheduler_tick(app: FastAPI, now: datetime | None = None) -> None:
     """One scheduler pass: trigger a run for every project whose cron is due, then
     advance its last_scheduled_at so the same boundary can't fire twice. `now` is
     injectable for tests."""
-    from app.api.runs import create_run_row
     from app.db import Project
+    from app.services.schedule_execution import (
+        ScheduleOverlapError,
+        SchedulePausedError,
+        trigger_scheduled_run,
+    )
     from app.services.scheduler import projects_due
 
     settings = app.state.settings
@@ -56,20 +61,26 @@ async def _scheduler_tick(app: FastAPI, now: datetime | None = None) -> None:
         projects = session.query(Project).all()
         for project in projects_due(projects, now):
             try:
-                create_run_row(
+                trigger_scheduled_run(
                     session,
                     settings,
-                    project,
-                    routes=["ALL"],
-                    roles=[r["name"] for r in (project.roles or [])],
-                    trigger="schedule",
+                    project.id,
+                    now=now,
+                    advance_anchor_on_overlap=True,
                 )
+            except ScheduleOverlapError as exc:
+                logger.info(
+                    "scheduler: skipped overlap for project_id=%s active_run_id=%s",
+                    project.id,
+                    exc.active_run_id,
+                )
+            except SchedulePausedError:
+                logger.info("scheduler: project_id=%s became paused", project.id)
             except Exception:
+                session.rollback()
                 logger.exception(
                     "scheduler: failed to trigger run for project_id=%s", project.id
                 )
-            project.last_scheduled_at = now
-        session.commit()
 
 
 async def _scheduler_loop(app: FastAPI) -> None:
@@ -109,7 +120,7 @@ async def _lifespan(app: FastAPI):
 from app.api import artifacts, capabilities, internal, projects as projects_api, results
 from app.api import matrix as matrix_api
 from app.api import routes as routes_api
-from app.api import runs
+from app.api import runs, schedules as schedules_api
 from app.db import Base, make_engine_and_sessionmaker
 from app.problems import register_problem_handlers
 from app.services.discovery import ensure_default_project, seed_config_routes
@@ -122,7 +133,7 @@ def create_app(settings: Settings | None = None, webhook_transport=None) -> Fast
     if settings is None:
         settings = Settings()
 
-    app = FastAPI(title="Auto QA Control Plane", version="0.1", lifespan=_lifespan)
+    app = FastAPI(title="Auto QA Control Plane", version="0.2", lifespan=_lifespan)
 
     engine, session_local = make_engine_and_sessionmaker(settings.database_url)
     Base.metadata.create_all(bind=engine)
@@ -144,6 +155,7 @@ def create_app(settings: Settings | None = None, webhook_transport=None) -> Fast
     app.include_router(routes_api.router, prefix="/api/v1")
     app.include_router(matrix_api.router, prefix="/api/v1")
     app.include_router(runs.router, prefix="/api/v1")
+    app.include_router(schedules_api.router, prefix="/api/v1")
     app.include_router(results.router, prefix="/api/v1")
     app.include_router(internal.router, prefix="/api/v1/internal")
     app.include_router(artifacts.router)  # unauthenticated, signed URLs only

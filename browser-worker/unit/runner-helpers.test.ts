@@ -35,14 +35,21 @@ describe('config: loadConfig', () => {
     expect(() => loadConfig({ QA_RUN_ID: 'run_abc' } as any)).toThrow(/QA_API_TOKEN/);
   });
 
-  test('applies defaults when optional env vars are absent', () => {
-    const cfg = loadConfig(REQUIRED as any, '/work/browser-worker');
+  test('applies defaults when optional execution selectors are empty', () => {
+    const cfg = loadConfig({
+      ...REQUIRED,
+      QA_RUN_BROWSERS: '[]',
+      QA_RUN_VIEWPORTS: '[]',
+    } as any, '/work/browser-worker');
     expect(cfg.runId).toBe('run_abc');
     expect(cfg.apiToken).toBe('tok123');
     expect(cfg.cpUrl).toBe('http://127.0.0.1:8787/api/v1');
     expect(cfg.baseUrl).toBeUndefined();
     expect(cfg.routes).toBeNull();
     expect(cfg.roles).toEqual(['user', 'anon']);
+    expect(cfg.browser).toBe('chromium');
+    expect(cfg.viewport).toEqual({ width: 1440, height: 900 });
+    expect(cfg.viewportLabel).toBe('1440x900');
     expect(cfg.artifactsDir).toBe(path.resolve('/work/browser-worker', '../var/artifacts'));
     expect(cfg.flakeReruns).toBe(3);
     expect(cfg.harConfig).toEqual({ bodyBytes: 512, topN: 10, slowMs: 3000 });
@@ -57,6 +64,8 @@ describe('config: loadConfig', () => {
       QA_BASE_URL_DEFAULT: 'https://default.example',
       QA_RUN_ROUTES: '["ALL"]',
       QA_RUN_ROLES: '["user"]',
+      QA_RUN_BROWSERS: '["firefox"]',
+      QA_RUN_VIEWPORTS: '["390x844"]',
       QA_ARTIFACTS_DIR: '/tmp/artifacts',
       QA_FLAKE_RERUNS: '5',
       QA_HAR_BODY_BYTES: '1024',
@@ -68,10 +77,24 @@ describe('config: loadConfig', () => {
     expect(cfg.baseUrl).toBe('https://run.example');
     expect(cfg.routes).toEqual(['ALL']);
     expect(cfg.roles).toEqual(['user']);
+    expect(cfg.browser).toBe('firefox');
+    expect(cfg.viewport).toEqual({ width: 390, height: 844 });
+    expect(cfg.viewportLabel).toBe('390x844');
     expect(cfg.artifactsDir).toBe('/tmp/artifacts');
     expect(cfg.flakeReruns).toBe(5);
     expect(cfg.harConfig).toEqual({ bodyBytes: 1024, topN: 20, slowMs: 5000 });
     expect(cfg.consoleConfig).toEqual({ topN: 30 });
+  });
+
+  test('rejects multiple browser or viewport selectors in one subprocess', () => {
+    expect(() => loadConfig({
+      ...REQUIRED,
+      QA_RUN_BROWSERS: '["chromium", "firefox"]',
+    } as any)).toThrow(/exactly one browser/);
+    expect(() => loadConfig({
+      ...REQUIRED,
+      QA_RUN_VIEWPORTS: '["1440x900", "390x844"]',
+    } as any)).toThrow(/exactly one viewport/);
   });
 
   test('QA_RUN_BASE_URL falls back to QA_BASE_URL_DEFAULT', () => {
@@ -330,6 +353,29 @@ describe('ingest: buildFailedAction / isIngestableProject / buildResultIngest', 
     );
     expect(item.browser).toBe('chromium');
     expect(item.viewport).toBe('1440x900');
+  });
+
+  test('buildResultIngest records the applied execution pair', () => {
+    const item = buildResultIngest({
+      test_name: 'matrix / as anon -> render',
+      test_file: 'tests/matrix.spec.ts:26',
+      route_path: '/',
+      role: 'anon',
+      status: 'passed',
+      duration_ms: 100,
+      flaky: false,
+      reruns_attempted: 0,
+      reruns_failed: 0,
+      failed_action: null,
+      shell_rendered: null,
+      console_summary: [],
+      network_summary: [],
+      dom_excerpt: null,
+      signature_input: null,
+      artifacts: [],
+    }, { browser: 'firefox', viewport: '390x844' });
+    expect(item.browser).toBe('firefox');
+    expect(item.viewport).toBe('390x844');
   });
 
   test('buildResultIngest carries through failed_action, flake counters and artifacts', () => {

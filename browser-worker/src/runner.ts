@@ -1,4 +1,4 @@
-// Run orchestrator for the Auto QA browser worker (v0.1). Invoked by the control
+// Run orchestrator for the Auto QA browser worker (v0.2). Invoked by the control
 // plane as `npx tsx src/runner.ts` (cwd = browser-worker). Deliberately thin: every
 // decision (payload shape, flake verdict, artifact keys/types, CLI args) is delegated to
 // the pure, unit-tested helpers under src/lib/*.ts and src/postprocess/*.ts — this file is
@@ -71,6 +71,8 @@ function childEnv(
     QA_PW_OUTPUT_DIR: outputDir,
     QA_PW_REPORT: reportPath,
     QA_RUN_ROLES: JSON.stringify(cfg.roles),
+    QA_PW_BROWSER: cfg.browser,
+    QA_PW_VIEWPORT: cfg.viewportLabel,
   };
   if (cfg.baseUrl) env.QA_RUN_BASE_URL = cfg.baseUrl;
   if (cfg.routes) env.QA_RUN_ROUTES = JSON.stringify(cfg.routes);
@@ -222,7 +224,7 @@ async function processResult(
     dom_excerpt: null,
     signature_input,
     artifacts,
-  });
+  }, { browser: cfg.browser, viewport: cfg.viewportLabel });
 }
 
 async function finalizeAndExit(
