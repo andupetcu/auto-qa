@@ -33,6 +33,11 @@ class Project(Base):
     roles = Column(JSON, nullable=False, default=list)
     role_matrix = Column(JSON, nullable=False, default=dict)
     created_at = Column(DateTime, nullable=False, default=_utcnow)
+    schedule_cron = Column(String, nullable=True)
+    max_parallel = Column(Integer, nullable=False, default=2)
+    enabled = Column(Boolean, nullable=False, default=True)
+    cred_ref = Column(String, nullable=True)
+    last_scheduled_at = Column(DateTime, nullable=True)
 
 
 class Route(Base):

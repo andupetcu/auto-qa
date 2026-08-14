@@ -12,6 +12,7 @@ dependencies = [
     "python-ulid>=2.7",
     "mcp>=1.9",
     "pyyaml>=6.0",
+    "croniter>=2.0",
 ]
 
 [dependency-groups]

@@ -1,5 +1,7 @@
 # secrets & local state
 .env
+.env.*
+!.env.example
 var/
 *.db
 

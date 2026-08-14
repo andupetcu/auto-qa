@@ -56,6 +56,64 @@ def _project_name(session: Session, project_id: str | None) -> str | None:
     return project.name if project else None
 
 
+def create_run_row(
+    session: Session,
+    settings: Settings,
+    project: Project,
+    routes: list[str],
+    roles: list[str] | None = None,
+    base_url: str | None = None,
+    app_version: str | None = None,
+    trigger: str = "manual",
+    browsers: list[str] | None = None,
+    viewports: list[str] | None = None,
+    capture: dict | None = None,
+    idempotency_key: str | None = None,
+    validate_routes: bool = True,
+) -> TestRun:
+    """Shared run-creation core: validates routes, persists a queued TestRun, spawns
+    the worker. Used by both POST /runs and POST /projects/{id}/run (and, in future,
+    the scheduler) so project-scoped run creation never drifts from the public API.
+    """
+    if validate_routes and routes != ["ALL"]:
+        known_paths = {
+            r.path for r in session.query(Route).filter_by(project_id=project.id).all()
+        }
+        for path in routes:
+            if path not in known_paths:
+                raise ProblemException(
+                    400, "Unknown route", f"Unknown route for {project.name}: {path}"
+                )
+
+    run_id = new_id("run")
+    run = TestRun(
+        id=run_id,
+        project_id=project.id,
+        trigger=trigger,
+        base_url=base_url or project.base_url_default,
+        app_version=app_version,
+        requested_routes=routes,
+        # empty roles would generate zero matrix tests worker-side — default to all
+        # of the project's roles
+        requested_roles=roles or [r["name"] for r in (project.roles or [])],
+        browsers=browsers or [],
+        viewports=viewports or [],
+        capture_config=capture or {},
+        idempotency_key=idempotency_key,
+        parent_run_id=None,
+        started_at=None,
+        ended_at=None,
+        status="queued",
+        totals=None,
+        detail=None,
+    )
+    session.add(run)
+    session.commit()
+
+    maybe_spawn(run, project, settings)
+    return run
+
+
 @router.post("/runs", status_code=202)
 def create_run(
     body: RunCreate,
@@ -70,46 +128,23 @@ def create_run(
             return {"run_id": existing.id, "status": existing.status}
 
     project = _get_project_or_400(session, body.project)
-    base_url = body.base_url or project.base_url_default
 
-    if body.routes != ["ALL"]:
-        known_paths = {
-            r.path for r in session.query(Route).filter_by(project_id=project.id).all()
-        }
-        for path in body.routes:
-            if path not in known_paths:
-                raise ProblemException(
-                    400, "Unknown route", f"Unknown route for {project.name}: {path}"
-                )
-
-    run_id = new_id("run")
-    run = TestRun(
-        id=run_id,
-        project_id=project.id,
-        trigger="manual",
-        base_url=base_url,
+    run = create_run_row(
+        session,
+        settings,
+        project,
+        routes=body.routes,
+        roles=body.roles,
+        base_url=body.base_url,
         app_version=body.app_version,
-        requested_routes=body.routes,
-        # empty roles would generate zero matrix tests worker-side — default to all
-        # of the project's roles
-        requested_roles=body.roles or [r["name"] for r in (project.roles or [])],
-        browsers=body.browsers or [],
-        viewports=body.viewports or [],
-        capture_config=body.capture or {},
+        trigger="manual",
+        browsers=body.browsers,
+        viewports=body.viewports,
+        capture=body.capture,
         idempotency_key=idem_key,
-        parent_run_id=None,
-        started_at=None,
-        ended_at=None,
-        status="queued",
-        totals=None,
-        detail=None,
     )
-    session.add(run)
-    session.commit()
 
-    maybe_spawn(run, project, settings)
-
-    return {"run_id": run_id, "status": "queued"}
+    return {"run_id": run.id, "status": "queued"}
 
 
 @router.get("/runs")

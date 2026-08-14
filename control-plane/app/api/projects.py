@@ -2,14 +2,22 @@
 import re
 from datetime import datetime, timezone
 
+from croniter import croniter
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.runs import create_run_row
 from app.db import Project, Route
-from app.deps import get_session, require_auth
+from app.deps import get_session, get_settings, require_auth
 from app.ids import new_id
 from app.problems import ProblemException
+from app.services.credentials import (
+    read_credentials_status,
+    user_credential_ref,
+    write_credentials,
+)
+from app.settings import Settings
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -41,6 +49,22 @@ class ProjectCreate(BaseModel):
     selectors: dict | None = None
     role_matrix: dict | None = None
     routes: list[str] | None = None
+    schedule_cron: str | None = None
+    max_parallel: int | None = None
+    enabled: bool | None = None
+
+
+class CredentialsIn(BaseModel):
+    username: str
+    password: str
+    totp_seed: str | None = None
+
+
+class ProjectRunIn(BaseModel):
+    routes: list[str] | None = None
+    base_url: str | None = None
+    app_version: str | None = None
+    trigger: str = "manual"
 
 
 class ProjectPatch(BaseModel):
@@ -49,6 +73,9 @@ class ProjectPatch(BaseModel):
     selectors: dict | None = None
     role_matrix: dict | None = None
     routes: list[str] | None = None
+    schedule_cron: str | None = None
+    max_parallel: int | None = None
+    enabled: bool | None = None
 
 
 def _get_project_or_404(session: Session, name: str) -> Project:
@@ -58,7 +85,31 @@ def _get_project_or_404(session: Session, name: str) -> Project:
     return project
 
 
-def _serialize(session: Session, project: Project) -> dict:
+def get_project_by_id_or_name(session: Session, id_or_name: str) -> Project:
+    """Resolve a project by its prj_ id first, falling back to its name."""
+    project = None
+    if id_or_name.startswith("prj_"):
+        project = session.get(Project, id_or_name)
+    if project is None:
+        project = session.query(Project).filter_by(name=id_or_name).first()
+    if project is None:
+        raise ProblemException(404, "Project not found", f"No project {id_or_name!r}")
+    return project
+
+
+def _next_run_at(project: Project, now: datetime) -> str | None:
+    if not project.enabled or not project.schedule_cron:
+        return None
+    try:
+        next_fire = croniter(project.schedule_cron, now).get_next(datetime)
+    except (ValueError, KeyError):
+        return None
+    if next_fire.tzinfo is None:
+        next_fire = next_fire.replace(tzinfo=timezone.utc)
+    return next_fire.isoformat()
+
+
+def _serialize(session: Session, project: Project, settings: Settings) -> dict:
     routes_count = session.query(Route).filter_by(project_id=project.id).count()
     return {
         "id": project.id,
@@ -69,6 +120,11 @@ def _serialize(session: Session, project: Project) -> dict:
         "role_matrix": project.role_matrix,
         "routes_count": routes_count,
         "created_at": project.created_at.isoformat() if project.created_at else None,
+        "schedule_cron": project.schedule_cron,
+        "max_parallel": project.max_parallel,
+        "enabled": bool(project.enabled),
+        "next_run_at": _next_run_at(project, datetime.now(timezone.utc)),
+        "credentials": read_credentials_status(settings, project),
     }
 
 
@@ -101,7 +157,11 @@ def _validate_roles(roles: list[RoleIn] | None) -> None:
 
 
 @router.post("/projects", status_code=201)
-def create_project(body: ProjectCreate, session: Session = Depends(get_session)):
+def create_project(
+    body: ProjectCreate,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+):
     _require_safe("project", body.name)
     _validate_roles(body.roles)
     existing = session.query(Project).filter_by(name=body.name).first()
@@ -119,6 +179,9 @@ def create_project(body: ProjectCreate, session: Session = Depends(get_session))
         roles=roles,
         role_matrix=body.role_matrix or {},
         created_at=datetime.now(timezone.utc),
+        schedule_cron=body.schedule_cron,
+        max_parallel=body.max_parallel if body.max_parallel is not None else 2,
+        enabled=body.enabled if body.enabled is not None else True,
     )
     session.add(project)
     session.flush()
@@ -127,23 +190,34 @@ def create_project(body: ProjectCreate, session: Session = Depends(get_session))
         _replace_routes(session, project, body.routes)
 
     session.commit()
-    return _serialize(session, project)
+    return _serialize(session, project, settings)
 
 
 @router.get("/projects")
-def list_projects(session: Session = Depends(get_session)):
+def list_projects(
+    session: Session = Depends(get_session), settings: Settings = Depends(get_settings)
+):
     rows = session.query(Project).order_by(Project.id).all()
-    return [_serialize(session, p) for p in rows]
+    return [_serialize(session, p, settings) for p in rows]
 
 
 @router.get("/projects/{name}")
-def get_project(name: str, session: Session = Depends(get_session)):
+def get_project(
+    name: str,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+):
     project = _get_project_or_404(session, name)
-    return _serialize(session, project)
+    return _serialize(session, project, settings)
 
 
 @router.patch("/projects/{name}")
-def patch_project(name: str, body: ProjectPatch, session: Session = Depends(get_session)):
+def patch_project(
+    name: str,
+    body: ProjectPatch,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+):
     _validate_roles(body.roles)
     project = _get_project_or_404(session, name)
 
@@ -157,6 +231,58 @@ def patch_project(name: str, body: ProjectPatch, session: Session = Depends(get_
         project.roles = [r.model_dump(exclude_none=True) for r in body.roles]
     if body.routes is not None:
         _replace_routes(session, project, body.routes)
+    if body.schedule_cron is not None:
+        project.schedule_cron = body.schedule_cron
+    if body.max_parallel is not None:
+        project.max_parallel = body.max_parallel
+    if body.enabled is not None:
+        project.enabled = body.enabled
 
     session.commit()
-    return _serialize(session, project)
+    return _serialize(session, project, settings)
+
+
+@router.put("/projects/{id_or_name}/credentials", status_code=204)
+def set_project_credentials(
+    id_or_name: str,
+    body: CredentialsIn,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+):
+    project = get_project_by_id_or_name(session, id_or_name)
+
+    write_credentials(settings, project, body.username, body.password, body.totp_seed)
+
+    cred_ref = user_credential_ref(project.id)
+    roles = [dict(r) for r in (project.roles or [])]
+    for r in roles:
+        if r.get("name") == "user":
+            r["credential_ref"] = cred_ref
+            break
+    else:
+        roles.append({"name": "user", "credential_ref": cred_ref})
+    project.roles = roles
+    project.cred_ref = cred_ref
+
+    session.commit()
+
+
+@router.post("/projects/{id_or_name}/run", status_code=202)
+def run_project(
+    id_or_name: str,
+    body: ProjectRunIn,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+):
+    project = get_project_by_id_or_name(session, id_or_name)
+    run = create_run_row(
+        session,
+        settings,
+        project,
+        routes=body.routes or ["ALL"],
+        roles=[r["name"] for r in (project.roles or [])],
+        base_url=body.base_url,
+        app_version=body.app_version,
+        trigger=body.trigger,
+    )
+    return {"run_id": run.id, "status": "queued"}

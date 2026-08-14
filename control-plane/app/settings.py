@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     runner_mode: str = "subprocess"
     roles: str = "user,anon"
     retention_full_days: int = 14
+    credentials_file: str = str(_REPO_ROOT / ".env.credentials")
+    role_matrix_fallback_path: str = str(_REPO_ROOT / "browser-worker" / "tests" / "role-matrix.yaml")
+    scheduler_enabled: bool = True
 
     @property
     def roles_list(self) -> list[str]:

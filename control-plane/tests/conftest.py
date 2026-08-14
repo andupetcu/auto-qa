@@ -22,6 +22,9 @@ def make_settings(tmp_path, **overrides):
         routes_config=str(tmp_path / "routes.yaml"),
         runner_mode="manual",
         roles="user,anon",
+        credentials_file=str(tmp_path / ".env.credentials"),
+        role_matrix_fallback_path=str(tmp_path / "role-matrix.yaml"),
+        scheduler_enabled=False,
     )
     defaults.update(overrides)
     return Settings(**defaults)
