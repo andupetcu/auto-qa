@@ -3,3 +3,4 @@ routes:
   - /
   - /campaigns/campaign-library
   - /campaigns/reports
+  - /in-store-measurement/in-store-traffic-forecast

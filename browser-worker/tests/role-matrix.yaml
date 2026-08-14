@@ -5,3 +5,4 @@
 /:                            { user: render, anon: render }
 /campaigns/campaign-library:  { user: render, anon: redirect }
 /campaigns/reports:           { user: render, anon: redirect }
+/in-store-measurement/in-store-traffic-forecast: { user: render, anon: redirect }
