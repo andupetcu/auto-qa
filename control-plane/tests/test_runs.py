@@ -131,6 +131,29 @@ def test_run_creation_rejects_multi_browser_or_viewport_matrix(client):
     assert response.status_code == 422
 
 
+def test_run_creation_rejects_role_not_configured_for_project(client):
+    updated = client.patch(
+        "/api/v1/projects/fai",
+        json={"roles": [{"name": "anon"}]},
+    )
+    assert updated.status_code == 200
+
+    response = client.post(
+        "/api/v1/runs",
+        json={
+            "project": "fai",
+            "routes": ["/"],
+            "roles": ["user", "anon"],
+            "browsers": ["chromium"],
+            "viewports": ["1440x900"],
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["title"] == "Unknown role"
+
+
 def test_rerun_single_result_preserves_case_matrix(client, app, settings):
     run_id = create_run(
         client,

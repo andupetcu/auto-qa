@@ -95,6 +95,16 @@ def _create_run_row_unlocked(
                     400, "Unknown route", f"Unknown route for {project.name}: {path}"
                 )
 
+    project_role_names = [role["name"] for role in (project.roles or [])]
+    requested_roles = roles or project_role_names
+    unknown_roles = sorted(set(requested_roles) - set(project_role_names))
+    if unknown_roles:
+        raise ProblemException(
+            400,
+            "Unknown role",
+            f"Roles not configured for project {project.name!r}: {unknown_roles}",
+        )
+
     run_id = new_id("run")
     run = TestRun(
         id=run_id,
@@ -103,9 +113,7 @@ def _create_run_row_unlocked(
         base_url=base_url or project.base_url_default,
         app_version=app_version,
         requested_routes=routes,
-        # empty roles would generate zero matrix tests worker-side — default to all
-        # of the project's roles
-        requested_roles=roles or [r["name"] for r in (project.roles or [])],
+        requested_roles=requested_roles,
         browsers=browsers or [],
         viewports=viewports or [],
         capture_config=capture or {},
