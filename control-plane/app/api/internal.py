@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.db import Artifact, TestResult, TestRun
+from app.db import Artifact, Project, TestResult, TestRun
 from app.deps import get_session, get_settings, require_auth
 from app.ids import new_id
 from app.problems import ProblemException
@@ -53,6 +53,13 @@ def _get_run_or_404(session: Session, run_id: str) -> TestRun:
     if run is None:
         raise ProblemException(404, "Run not found", f"No run with id {run_id}")
     return run
+
+
+def _project_name(session: Session, project_id: str | None) -> str | None:
+    if project_id is None:
+        return None
+    project = session.get(Project, project_id)
+    return project.name if project else None
 
 
 @router.post("/runs/{run_id}/results", status_code=204)
@@ -126,6 +133,7 @@ def mark_started(
         "run.started",
         {
             "run_id": run.id,
+            "project": _project_name(session, run.project_id),
             "trigger": run.trigger,
             "base_url": run.base_url,
             "app_version": run.app_version,
@@ -165,6 +173,7 @@ def finalize_run(
     n_bundles = cluster_run(session, run, settings)
     session.commit()
 
+    project_name = _project_name(session, run.project_id)
     if body.status == "completed":
         emit_webhook(
             request.app,
@@ -172,6 +181,7 @@ def finalize_run(
             "run.completed",
             {
                 "run_id": run.id,
+                "project": project_name,
                 "totals": totals,
                 "bundles": n_bundles,
                 "parent_run_id": run.parent_run_id,
@@ -182,7 +192,8 @@ def finalize_run(
             request.app,
             run.id,
             "run.failed",
-            {"run_id": run.id, "status": run.status, "detail": run.detail},
+            {"run_id": run.id, "project": project_name, "status": run.status,
+             "detail": run.detail},
         )
 
     return {"status": run.status, "totals": totals}

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 import { loadConfig, type RunnerConfig } from './lib/config';
 import { buildMatrixArgs, buildFlakeRerunArgs } from './lib/playwrightArgs';
-import { hasAnyFailures, isFailureStatus, isFlaky } from './lib/flake';
+import { hasAnyFailures, isFailureStatus, isFlaky, setupFailed } from './lib/flake';
 import { collectAttachments, attachmentKey, mapAttachmentType, type RawAttachment } from './lib/attachments';
 import { resultKey } from './lib/slug';
 import {
@@ -282,6 +282,16 @@ async function runToCompletion(cfg: RunnerConfig): Promise<void> {
   const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
   const allResults: ParsedResult[] = parseReport(report);
   const attachmentsMap = collectAttachments(report);
+
+  // auth setup failing (e.g. a project's QA_CRED_* not populated) skips every dependent
+  // test — report that as a failed run rather than a false-green "completed"
+  if (setupFailed(allResults)) {
+    log('auth setup failed — finalizing run as failed');
+    await finalizeAndExit(cfg, 'failed',
+      'authentication setup failed (missing or invalid credentials for this project?)');
+    return;
+  }
+
   const results = allResults.filter((r) => isIngestableProject(r.role));
 
   log(`parsed ${results.length} matrix result(s)`);

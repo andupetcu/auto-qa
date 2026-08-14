@@ -48,6 +48,23 @@ def test_unknown_project_is_404(client):
     assert client.get("/api/v1/projects/nope").status_code == 404
 
 
+def test_unsafe_project_name_rejected(client):
+    for bad in ["../../etc", "has space", "UPPER", "semi;colon", "a" * 65, ""]:
+        r = client.post("/api/v1/projects",
+                        json={"name": bad, "base_url_default": "https://x.test"})
+        assert r.status_code == 400, f"{bad!r} should be rejected"
+        assert r.headers["content-type"].startswith("application/problem+json")
+
+
+def test_unsafe_role_name_rejected(client):
+    r = client.post("/api/v1/projects", json={
+        "name": "okproj", "base_url_default": "https://x.test",
+        "roles": [{"name": "../evil", "credential_ref": "QA_CRED_USER"}],
+    })
+    assert r.status_code == 400
+    assert r.headers["content-type"].startswith("application/problem+json")
+
+
 def test_patch_replaces_routes_and_merges_config(client):
     _create(client)
     r = client.patch("/api/v1/projects/studio",

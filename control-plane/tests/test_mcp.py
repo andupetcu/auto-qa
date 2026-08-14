@@ -61,6 +61,15 @@ async def test_create_project_and_scoped_run_via_mcp(mcp):
     assert status["project"] == "mcpproj"
 
 
+async def test_update_project_via_mcp_remaps_base_url(mcp):
+    await mcp.call_tool("create_project", {
+        "name": "updproj", "base_url": "https://one.example.test", "routes": ["/"]})
+    out = await mcp.call_tool("update_project",
+                              {"name": "updproj", "base_url": "https://two.example.test"})
+    updated = out[1] if isinstance(out, tuple) else out
+    assert updated["base_url_default"] == "https://two.example.test"
+
+
 async def test_get_failure_bundles_empty_run(mcp):
     out = await mcp.call_tool("run_suite", {"routes": ["ALL"]})
     payload = out[1] if isinstance(out, tuple) else out
