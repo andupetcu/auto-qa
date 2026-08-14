@@ -9,6 +9,7 @@ from app.services.scheduler import projects_due
 def _project(**kw):
     defaults = dict(
         name="p", enabled=True, schedule_cron=None, last_scheduled_at=None,
+        created_at=datetime(2026, 8, 14, 0, 0, tzinfo=timezone.utc),
     )
     defaults.update(kw)
     return SimpleNamespace(**defaults)
@@ -26,10 +27,28 @@ def test_no_cron_never_due():
     assert projects_due([p], now) == []
 
 
-def test_due_when_never_scheduled_and_cron_fire_in_past():
-    # hourly cron, last fire was at 12:00, now is 12:05 -> due (never run before)
+def test_newly_created_not_due_until_next_boundary():
+    # created at 12:04, hourly cron: next fire is 13:00 — a fresh project must NOT
+    # catch-up-fire immediately at 12:05 (the v0.3 fix).
     now = datetime(2026, 8, 14, 12, 5, tzinfo=timezone.utc)
-    p = _project(schedule_cron="0 * * * *", last_scheduled_at=None)
+    p = _project(schedule_cron="0 * * * *", last_scheduled_at=None,
+                 created_at=datetime(2026, 8, 14, 12, 4, tzinfo=timezone.utc))
+    assert projects_due([p], now) == []
+
+
+def test_never_scheduled_due_once_a_boundary_passes_since_creation():
+    # created at 11:30, now 12:05 — the 12:00 boundary elapsed after creation -> due
+    now = datetime(2026, 8, 14, 12, 5, tzinfo=timezone.utc)
+    p = _project(schedule_cron="0 * * * *", last_scheduled_at=None,
+                 created_at=datetime(2026, 8, 14, 11, 30, tzinfo=timezone.utc))
+    assert projects_due([p], now) == [p]
+
+
+def test_naive_created_at_is_treated_as_utc():
+    # SQLite hands back naive datetimes; must not crash comparing to tz-aware now
+    now = datetime(2026, 8, 14, 12, 5, tzinfo=timezone.utc)
+    p = _project(schedule_cron="0 * * * *", last_scheduled_at=None,
+                 created_at=datetime(2026, 8, 14, 11, 30))  # naive
     assert projects_due([p], now) == [p]
 
 

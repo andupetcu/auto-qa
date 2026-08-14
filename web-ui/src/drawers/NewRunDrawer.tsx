@@ -18,10 +18,10 @@ import { endpoints } from '../api/endpoints';
 import type { RunCreateInput } from '../api/types';
 import { monoFontFamily } from '../components/MonoBlock';
 
-// Browsers/viewports aren't enumerated by GET /capabilities today — these
-// mirror the mockup's chip set and the worker's Playwright project config.
-const BROWSERS = ['chromium', 'firefox', 'webkit'];
-const VIEWPORTS = ['1440x900', '1280x720', '390x844'];
+// Fallbacks used only until GET /capabilities loads (the control plane is the source
+// of truth for the offered browsers/viewports).
+const BROWSERS_FALLBACK = ['chromium', 'firefox', 'webkit'];
+const VIEWPORTS_FALLBACK = ['1440x900', '1280x720', '390x844'];
 
 const useStyles = makeStyles({
   drawer: {
@@ -104,6 +104,13 @@ export function NewRunDrawer({ open, onClose }: { open: boolean; onClose: () => 
     queryFn: endpoints.projects,
     enabled: open,
   });
+  const capabilitiesQuery = useQuery({
+    queryKey: ['capabilities'],
+    queryFn: endpoints.capabilities,
+    enabled: open,
+  });
+  const browserOptions = capabilitiesQuery.data?.browsers ?? BROWSERS_FALLBACK;
+  const viewportOptions = capabilitiesQuery.data?.viewports ?? VIEWPORTS_FALLBACK;
   const routesQuery = useQuery({
     queryKey: ['routes', projectName],
     queryFn: () => endpoints.routes(projectName ?? undefined),
@@ -248,7 +255,7 @@ export function NewRunDrawer({ open, onClose }: { open: boolean; onClose: () => 
         </Field>
         <Field label="Browsers">
           <div className={styles.chipRow}>
-            {BROWSERS.map((b) => (
+            {browserOptions.map((b) => (
               <span
                 key={b}
                 className={`${styles.chip} ${browsers.has(b) ? styles.chipSelected : ''}`}
@@ -261,7 +268,7 @@ export function NewRunDrawer({ open, onClose }: { open: boolean; onClose: () => 
         </Field>
         <Field label="Viewports">
           <div className={styles.chipRow}>
-            {VIEWPORTS.map((v) => (
+            {viewportOptions.map((v) => (
               <span
                 key={v}
                 className={`${styles.chip} ${styles.monoChip} ${

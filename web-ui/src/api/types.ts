@@ -36,6 +36,8 @@ export interface Capabilities {
   roles: string[];
   projects: string[];
   artifact_types: string[];
+  browsers: string[];
+  viewports: string[];
 }
 
 export interface ProjectRole {

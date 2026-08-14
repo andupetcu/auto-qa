@@ -21,3 +21,7 @@ def test_capabilities_shape(client):
         assert t in caps["artifact_types"]
     assert caps["version"] == "0.1"
     assert caps["roles"] == ["user", "anon"]
+    # the New-run drawer sources these instead of hardcoding them
+    assert "chromium" in caps["browsers"]
+    assert set(caps["browsers"]) <= {"chromium", "firefox", "webkit"}
+    assert all("x" in v for v in caps["viewports"])

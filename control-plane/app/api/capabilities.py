@@ -8,6 +8,8 @@ from app.settings import Settings
 router = APIRouter(dependencies=[Depends(require_auth)])
 
 ARTIFACT_TYPES = ["trace", "har", "console", "screenshot", "video"]
+BROWSERS = ["chromium", "firefox", "webkit"]
+VIEWPORTS = ["1440x900", "1280x720", "390x844"]
 
 
 @router.get("/capabilities")
@@ -20,5 +22,7 @@ def get_capabilities(
         "version": "0.1",
         "roles": settings.roles_list,
         "artifact_types": ARTIFACT_TYPES,
+        "browsers": BROWSERS,
+        "viewports": VIEWPORTS,
         "projects": projects,
     }
