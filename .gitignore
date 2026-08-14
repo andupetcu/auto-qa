@@ -20,3 +20,6 @@ playwright-report/
 .DS_Store
 .playwright-mcp/
 logs/
+
+# design docs — kept local, not published
+docs/
