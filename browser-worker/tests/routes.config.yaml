@@ -1,0 +1,5 @@
+# Authoritative route list (discovery source: config). The control plane reads this file.
+routes:
+  - /
+  - /campaigns/campaign-library
+  - /campaigns/reports

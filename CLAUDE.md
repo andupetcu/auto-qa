@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-This is currently a **specification-only repository**: `docs/` contains the complete design suite for the Footprints AI autonomous QA system; no implementation code exists yet. When implementation begins, it follows the monorepo layout defined in `docs/00-implementation-guide.md` (`control-plane/` in Python 3.12/FastAPI, `browser-worker/` in TypeScript/Playwright, `deploy/`).
+Monorepo implementing the Footprints AI autonomous QA system, **v0.1 dev stack**: `control-plane/` (Python 3.12, FastAPI + SQLite + local-disk artifacts + MCP), `browser-worker/` (TypeScript, Playwright), `docs/` (design suite). **v0.1 owner constraints: no Docker (ever), no Temporal, no SeaweedFS/Postgres — PM2 + SQLite + subprocess orchestration.** See `docs/plans/v0.1-plan.md` for the authoritative v0.1 architecture, contracts, and probed facts about the dev target (https://fai.footprints.media). Development is test-first: the pytest/vitest suites are the contract; don't change tests to fit code.
 
-**Read `docs/00-implementation-guide.md` first** — it is the master document; every other doc is referenced from it. `docs/footprints-qa-architecture.md` is the authoritative architecture the whole suite implements.
+**Read `docs/00-implementation-guide.md` first** — it is the master document; every other doc is referenced from it. `docs/footprints-qa-architecture.md` is the authoritative long-term architecture; where v0.1 deviates (infra only, not contracts), `docs/plans/v0.1-plan.md` wins.
 
 ## Non-negotiable ground rules (from docs/00)
 
@@ -71,4 +71,8 @@ Implement in the roadmap stages (docs/00 §"Build order"), each with a verifiabl
 
 ## Commands
 
-No build/test tooling exists yet. Once implemented per the docs: the browser-worker test project runs standalone with `npx playwright test` (from `browser-worker/tests/`), the schema applies via Alembic, and deployment is `docker compose` from `deploy/` with SOPS-decrypted secrets (`sops exec-env`). Use `python3` for any Python invocation.
+- Control-plane tests: `cd control-plane && .venv/bin/python -m pytest -q` (venv created with `uv venv --python 3.12`; system python3 is 3.14 with broken ensurepip — use uv)
+- Worker unit tests: `cd browser-worker && npx vitest run`; type-check with `npx tsc --noEmit`
+- Live Playwright suite against the dev app: `cd browser-worker && set -a && source ../.env && set +a && npx playwright test --config tests/playwright.config.ts`
+- Serve the control plane: `pm2 start ecosystem.config.js` (or `.venv/bin/uvicorn app.main:app --app-dir control-plane --port 8787` for foreground)
+- Secrets/dev credentials live in the gitignored `.env` at repo root (`.env.example` has the shape). Never commit credentials.
