@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.db import Artifact, FailureCluster, TestResult, TestRun
+from app.db import Artifact, FailureCluster, Project, TestResult, TestRun
 from app.ids import new_id
 from app.services.signing import signed_url_for
 from app.settings import Settings
@@ -55,6 +55,9 @@ def cluster_run(session: Session, run: TestRun, settings: Settings) -> int:
     but this keeps re-finalization idempotent). Returns the number of bundles created.
     """
     session.query(FailureCluster).filter_by(run_id=run.id).delete()
+
+    project = session.get(Project, run.project_id) if run.project_id else None
+    project_name = project.name if project else None
 
     results = (
         session.query(TestResult)
@@ -123,7 +126,7 @@ def cluster_run(session: Session, run: TestRun, settings: Settings) -> int:
             "console_errors": exemplar.console_summary,
             "network_failures": exemplar.network_summary,
             "dom_excerpt": exemplar.dom_excerpt,
-            "app": {"base_url": run.base_url, "version": run.app_version},
+            "app": {"project": project_name, "base_url": run.base_url, "version": run.app_version},
             "artifacts": artifact_urls,
             "artifact_expiry": artifact_expiry.isoformat(),
         }

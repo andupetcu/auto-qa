@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
+import { resolveRoles, sessionStatePath } from './projectConfig';
 
-const roles = (process.env.QA_ROLES ?? 'user,anon').split(',').map(r => r.trim());
+const roles = resolveRoles(process.env).map(r => r.name);
 
 export default defineConfig({
   testDir: '.',
@@ -24,7 +25,7 @@ export default defineConfig({
     ...roles.filter(r => r !== 'anon').map(r => ({
       name: r,
       dependencies: ['setup'],
-      use: { storageState: `.auth/${r}.json` },
+      use: { storageState: sessionStatePath(process.env, r) },
     })),
     ...(roles.includes('anon') ? [{ name: 'anon', use: {} }] : []),
   ],

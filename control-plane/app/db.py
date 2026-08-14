@@ -6,6 +6,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    ForeignKey,
     Integer,
     String,
     UniqueConstraint,
@@ -22,23 +23,36 @@ class Base(DeclarativeBase):
     pass
 
 
+class Project(Base):
+    __tablename__ = "project"
+
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False, unique=True)
+    base_url_default = Column(String, nullable=False)
+    selectors = Column(JSON, nullable=False, default=dict)
+    roles = Column(JSON, nullable=False, default=list)
+    role_matrix = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime, nullable=False, default=_utcnow)
+
+
 class Route(Base):
     __tablename__ = "route"
 
     id = Column(String, primary_key=True)
-    base_url = Column(String, nullable=False)
+    project_id = Column(String, ForeignKey("project.id"), nullable=False)
     path = Column(String, nullable=False)
     discovery_source = Column(String, nullable=False)
     first_seen = Column(DateTime, nullable=False, default=_utcnow)
     last_seen = Column(DateTime, nullable=False, default=_utcnow)
 
-    __table_args__ = (UniqueConstraint("base_url", "path", name="uq_route_base_url_path"),)
+    __table_args__ = (UniqueConstraint("project_id", "path", name="uq_route_project_path"),)
 
 
 class TestRun(Base):
     __tablename__ = "test_run"
 
     id = Column(String, primary_key=True)
+    project_id = Column(String, ForeignKey("project.id"), nullable=True)
     trigger = Column(String, nullable=False)
     base_url = Column(String, nullable=False)
     app_version = Column(String, nullable=True)

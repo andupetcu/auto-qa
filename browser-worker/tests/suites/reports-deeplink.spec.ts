@@ -8,6 +8,7 @@ const QUERY = process.env.QA_FIXTURE_REPORTS_QUERY
 
 test('reports deeplink renders for seeded campaign', async ({ page }) => {
   test.skip(test.info().project.name !== 'user', 'authenticated suite');
+  test.skip((process.env.QA_RUN_PROJECT ?? 'fai') !== 'fai', 'fai-specific suite');
   test.info().annotations.push({ type: 'route', description: '/campaigns/reports' });
 
   await page.goto(`/campaigns/reports?${QUERY}`);

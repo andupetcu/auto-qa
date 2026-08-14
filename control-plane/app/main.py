@@ -16,10 +16,12 @@ async def _lifespan(app: FastAPI):
         async with sm.run():
             yield
 
-from app.api import artifacts, capabilities, internal, results, routes as routes_api, runs
+from app.api import artifacts, capabilities, internal, projects as projects_api, results
+from app.api import routes as routes_api
+from app.api import runs
 from app.db import Base, make_engine_and_sessionmaker
 from app.problems import register_problem_handlers
-from app.services.discovery import seed_config_routes
+from app.services.discovery import ensure_default_project, seed_config_routes
 from app.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -41,11 +43,13 @@ def create_app(settings: Settings | None = None, webhook_transport=None) -> Fast
     app.state.event_sequences = {}
 
     with session_local() as session:
-        seed_config_routes(session, settings)
+        default_project = ensure_default_project(session, settings)
+        seed_config_routes(session, settings, default_project)
 
     register_problem_handlers(app)
 
     app.include_router(capabilities.router, prefix="/api/v1")
+    app.include_router(projects_api.router, prefix="/api/v1")
     app.include_router(routes_api.router, prefix="/api/v1")
     app.include_router(runs.router, prefix="/api/v1")
     app.include_router(results.router, prefix="/api/v1")

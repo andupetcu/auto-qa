@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 EXPECTED_TOOLS = {
     "capabilities", "list_routes", "run_suite", "get_run_status",
     "get_failure_bundles", "get_console_logs", "get_har", "get_artifacts", "rerun",
+    "list_projects", "create_project", "update_project",
 }
 
 
@@ -40,6 +41,24 @@ def test_mcp_http_mount_requires_bearer_token(app):
         # (no /mcp/mcp double path, no 500 from an unstarted session manager)
         r = c.post("/mcp", json={}, headers={"Authorization": "Bearer testtoken"})
         assert r.status_code not in (401, 404, 307, 500)
+
+
+async def test_create_project_and_scoped_run_via_mcp(mcp):
+    out = await mcp.call_tool("create_project", {
+        "name": "mcpproj", "base_url": "https://mcp.example.test", "routes": ["/"],
+    })
+    created = out[1] if isinstance(out, tuple) else out
+    assert created["name"] == "mcpproj"
+
+    listed = await mcp.call_tool("list_projects", {})
+    listed = listed[1] if isinstance(listed, tuple) else listed
+    assert "mcpproj" in [p["name"] for p in listed["projects"]]
+
+    run = await mcp.call_tool("run_suite", {"project": "mcpproj", "routes": ["ALL"]})
+    run = run[1] if isinstance(run, tuple) else run
+    status = await mcp.call_tool("get_run_status", {"run_id": run["run_id"]})
+    status = status[1] if isinstance(status, tuple) else status
+    assert status["project"] == "mcpproj"
 
 
 async def test_get_failure_bundles_empty_run(mcp):

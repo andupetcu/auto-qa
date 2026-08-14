@@ -6,9 +6,10 @@ def _iso(dt):
     return dt.isoformat() if dt is not None else None
 
 
-def serialize_run(run: TestRun) -> dict:
+def serialize_run(run: TestRun, project_name: str | None = None) -> dict:
     return {
         "id": run.id,
+        "project": project_name,
         "base_url": run.base_url,
         "app_version": run.app_version,
         "trigger": run.trigger,

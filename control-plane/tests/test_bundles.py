@@ -44,7 +44,8 @@ def test_bundle_shape(client):
     assert {"route": "/campaigns/reports", "role": "user"} in b["affected"]
     assert b["test"]["name"]
     assert b["test"]["file"]
-    assert b["app"] == {"base_url": "https://app.example.test", "version": None}
+    assert b["app"] == {"project": "fai", "base_url": "https://app.example.test",
+                        "version": None}
     # exemplar = first by severity then duration: the 900ms one
     assert b["test"]["duration_ms"] == 900
     assert "artifact_expiry" in b

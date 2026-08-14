@@ -104,6 +104,12 @@ def build_mcp(app, settings) -> QAMCPServer:
             resp.raise_for_status()
             return resp.json()
 
+    async def _patch(path: str, json_body: dict | None = None):
+        async with _client() as client:
+            resp = await client.patch(path, json=json_body or {})
+            resp.raise_for_status()
+            return resp.json()
+
     handlers: dict = {}
 
     @inner.tool()
@@ -113,8 +119,8 @@ def build_mcp(app, settings) -> QAMCPServer:
     handlers["capabilities"] = capabilities
 
     @inner.tool()
-    async def list_routes() -> dict:
-        data = await _get("/api/v1/routes")
+    async def list_routes(project: str | None = None) -> dict:
+        data = await _get("/api/v1/routes", {"project": project})
         return {"routes": data}
 
     handlers["list_routes"] = list_routes
@@ -122,6 +128,7 @@ def build_mcp(app, settings) -> QAMCPServer:
     @inner.tool()
     async def run_suite(
         routes: list[str],
+        project: str | None = None,
         roles: list[str] | None = None,
         browsers: list[str] | None = None,
         viewports: list[str] | None = None,
@@ -129,6 +136,8 @@ def build_mcp(app, settings) -> QAMCPServer:
         app_version: str | None = None,
     ) -> dict:
         body = {"routes": routes}
+        if project is not None:
+            body["project"] = project
         if roles is not None:
             body["roles"] = roles
         if browsers is not None:
@@ -212,6 +221,59 @@ def build_mcp(app, settings) -> QAMCPServer:
         return await _post(f"/api/v1/runs/{run_id}/rerun", body)
 
     handlers["rerun"] = rerun
+
+    @inner.tool()
+    async def create_project(
+        name: str,
+        base_url: str,
+        roles: list[dict] | None = None,
+        selectors: dict | None = None,
+        role_matrix: dict | None = None,
+        routes: list[str] | None = None,
+    ) -> dict:
+        body: dict = {"name": name, "base_url_default": base_url}
+        if roles is not None:
+            body["roles"] = roles
+        if selectors is not None:
+            body["selectors"] = selectors
+        if role_matrix is not None:
+            body["role_matrix"] = role_matrix
+        if routes is not None:
+            body["routes"] = routes
+        return await _post("/api/v1/projects", body)
+
+    handlers["create_project"] = create_project
+
+    @inner.tool()
+    async def update_project(
+        name: str,
+        base_url: str | None = None,
+        roles: list[dict] | None = None,
+        selectors: dict | None = None,
+        role_matrix: dict | None = None,
+        routes: list[str] | None = None,
+    ) -> dict:
+        body: dict = {}
+        if base_url is not None:
+            body["base_url_default"] = base_url
+        if roles is not None:
+            body["roles"] = roles
+        if selectors is not None:
+            body["selectors"] = selectors
+        if role_matrix is not None:
+            body["role_matrix"] = role_matrix
+        if routes is not None:
+            body["routes"] = routes
+        return await _patch(f"/api/v1/projects/{name}", body)
+
+    handlers["update_project"] = update_project
+
+    @inner.tool()
+    async def list_projects() -> dict:
+        data = await _get("/api/v1/projects")
+        return {"projects": data}
+
+    handlers["list_projects"] = list_projects
 
     return QAMCPServer(inner, handlers)
 

@@ -1,8 +1,10 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { expect, test as setup } from '@playwright/test';
 import { SEL } from './selectors';
+import { resolveRoles, sessionStatePath } from './projectConfig';
 
-const roles = (process.env.QA_ROLES ?? 'user,anon').split(',')
-  .map(r => r.trim()).filter(r => r !== 'anon');
+const roles = resolveRoles(process.env).filter((r) => r.credential_ref);
 
 setup.setTimeout(120_000);
 
@@ -22,8 +24,8 @@ async function loginOnce(page: import('@playwright/test').Page, email: string, p
 }
 
 for (const role of roles) {
-  setup(`authenticate ${role}`, async ({ page }) => {
-    const P = `QA_CRED_${role.toUpperCase()}`;
+  setup(`authenticate ${role.name}`, async ({ page }) => {
+    const P = role.credential_ref as string;
     const email = process.env[`${P}_EMAIL`];
     const password = process.env[`${P}_PASSWORD`];
     if (!email || !password) throw new Error(`missing ${P}_EMAIL / ${P}_PASSWORD`);
@@ -36,6 +38,8 @@ for (const role of roles) {
       await page.reload();
       await loginOnce(page, email, password);
     }
-    await page.context().storageState({ path: `.auth/${role}.json` });
+    const statePath = sessionStatePath(process.env, role.name);
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    await page.context().storageState({ path: statePath });
   });
 }

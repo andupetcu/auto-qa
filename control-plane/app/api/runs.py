@@ -4,11 +4,12 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.db import FailureCluster, Route, TestResult, TestRun
+from app.db import FailureCluster, Project, Route, TestResult, TestRun
 from app.deps import get_session, get_settings, require_auth
 from app.ids import new_id
 from app.problems import ProblemException
 from app.serializers import serialize_result, serialize_run
+from app.services.discovery import DEFAULT_PROJECT_NAME
 from app.services.runner import maybe_spawn
 from app.settings import Settings
 
@@ -19,6 +20,7 @@ SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2}
 
 class RunCreate(BaseModel):
     routes: list[str]
+    project: str = DEFAULT_PROJECT_NAME
     roles: list[str] | None = None
     browsers: list[str] | None = None
     viewports: list[str] | None = None
@@ -40,6 +42,20 @@ def _get_run_or_404(session: Session, run_id: str) -> TestRun:
     return run
 
 
+def _get_project_or_400(session: Session, name: str) -> Project:
+    project = session.query(Project).filter_by(name=name).first()
+    if project is None:
+        raise ProblemException(400, "Unknown project", f"Unknown project: {name}")
+    return project
+
+
+def _project_name(session: Session, project_id: str | None) -> str | None:
+    if project_id is None:
+        return None
+    project = session.get(Project, project_id)
+    return project.name if project else None
+
+
 @router.post("/runs", status_code=202)
 def create_run(
     body: RunCreate,
@@ -53,21 +69,23 @@ def create_run(
         if existing is not None:
             return {"run_id": existing.id, "status": existing.status}
 
-    base_url = body.base_url or settings.base_url_default
+    project = _get_project_or_400(session, body.project)
+    base_url = body.base_url or project.base_url_default
 
     if body.routes != ["ALL"]:
         known_paths = {
-            r.path for r in session.query(Route).filter_by(base_url=base_url).all()
+            r.path for r in session.query(Route).filter_by(project_id=project.id).all()
         }
         for path in body.routes:
             if path not in known_paths:
                 raise ProblemException(
-                    400, "Unknown route", f"Unknown route for {base_url}: {path}"
+                    400, "Unknown route", f"Unknown route for {project.name}: {path}"
                 )
 
     run_id = new_id("run")
     run = TestRun(
         id=run_id,
+        project_id=project.id,
         trigger="manual",
         base_url=base_url,
         app_version=body.app_version,
@@ -87,7 +105,7 @@ def create_run(
     session.add(run)
     session.commit()
 
-    maybe_spawn(run, settings)
+    maybe_spawn(run, project, settings)
 
     return {"run_id": run_id, "status": "queued"}
 
@@ -95,13 +113,13 @@ def create_run(
 @router.get("/runs")
 def list_runs(session: Session = Depends(get_session)):
     rows = session.query(TestRun).order_by(TestRun.id).all()
-    return [serialize_run(r) for r in rows]
+    return [serialize_run(r, _project_name(session, r.project_id)) for r in rows]
 
 
 @router.get("/runs/{run_id}")
 def get_run(run_id: str, session: Session = Depends(get_session)):
     run = _get_run_or_404(session, run_id)
-    return serialize_run(run)
+    return serialize_run(run, _project_name(session, run.project_id))
 
 
 @router.get("/runs/{run_id}/results")
@@ -138,6 +156,7 @@ def rerun_run(
     settings: Settings = Depends(get_settings),
 ):
     parent = _get_run_or_404(session, run_id)
+    project = session.get(Project, parent.project_id) if parent.project_id else None
     base_url = body.base_url or parent.base_url
 
     if body.scope in ("failed", "affected"):
@@ -159,6 +178,7 @@ def rerun_run(
     new_run_id = new_id("run")
     new_run = TestRun(
         id=new_run_id,
+        project_id=parent.project_id,
         trigger="manual",
         base_url=base_url,
         app_version=body.app_version if body.app_version is not None else parent.app_version,
@@ -178,6 +198,8 @@ def rerun_run(
     session.add(new_run)
     session.commit()
 
-    maybe_spawn(new_run, settings)
+    if project is None:
+        project = _get_project_or_400(session, DEFAULT_PROJECT_NAME)
+    maybe_spawn(new_run, project, settings)
 
     return {"run_id": new_run_id, "status": "queued"}

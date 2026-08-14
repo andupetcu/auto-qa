@@ -4,11 +4,13 @@ import { fileURLToPath } from 'node:url';
 import yaml from 'yaml';
 import { expect, test } from './fixtures';
 import { SEL } from './selectors';
+import { resolveMatrix } from './projectConfig';
 
 type Expected = 'render' | 'redirect' | 403;
 const here = path.dirname(fileURLToPath(import.meta.url));
-const matrix: Record<string, Record<string, Expected>> =
+const loadYamlFallback = () =>
   yaml.parse(fs.readFileSync(path.join(here, 'role-matrix.yaml'), 'utf8'));
+const matrix = resolveMatrix(process.env, loadYamlFallback) as Record<string, Record<string, Expected>>;
 
 const requestedRoutes: string[] | null =
   process.env.QA_RUN_ROUTES ? JSON.parse(process.env.QA_RUN_ROUTES) : null;
