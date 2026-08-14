@@ -98,6 +98,18 @@ export function resolveMatrix(env: Env, loadYamlFallback: () => Matrix): Matrix 
   return loadYamlFallback();
 }
 
+// Parse a JSON-array env filter (QA_RUN_ROUTES / QA_RUN_ROLES). Empty, missing or
+// malformed all mean "no filter" — an empty list must never mean "exclude everything".
+export function parseListEnv(value: string | undefined): string[] | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) && parsed.length ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export function sessionStatePath(env: Env, role: string): string {
   const project = env.QA_RUN_PROJECT ?? 'fai';
   return `.auth/${project}/${role}.json`;

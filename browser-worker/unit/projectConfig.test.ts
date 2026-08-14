@@ -71,6 +71,17 @@ describe('resolveMatrix', () => {
   });
 });
 
+describe('parseListEnv', () => {
+  test('parses a JSON array, treats empty/missing/malformed as "no filter"', async () => {
+    const { parseListEnv } = await import('../tests/projectConfig');
+    expect(parseListEnv('["ALL"]')).toEqual(['ALL']);
+    expect(parseListEnv('["user","anon"]')).toEqual(['user', 'anon']);
+    expect(parseListEnv('[]')).toBeNull();   // empty list must NOT mean "exclude everything"
+    expect(parseListEnv(undefined)).toBeNull();
+    expect(parseListEnv('{nope')).toBeNull();
+  });
+});
+
 describe('sessionStatePath', () => {
   test('namespaces storageState by project, default fai', () => {
     expect(sessionStatePath({}, 'user')).toBe('.auth/fai/user.json');

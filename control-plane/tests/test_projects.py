@@ -120,6 +120,22 @@ def test_build_spawn_env_carries_project_payload(client, app, settings):
     assert {"name": "user", "credential_ref": "QA_CRED_USER"} in roles
 
 
+def test_run_without_roles_defaults_to_project_roles(client, app, settings):
+    import json
+
+    from app.db import Project, TestRun
+    from app.services.runner import build_spawn_env
+
+    _create(client)
+    r = client.post("/api/v1/runs", json={"project": "studio", "routes": ["ALL"]})
+    with app.state.SessionLocal() as session:
+        run = session.get(TestRun, r.json()["run_id"])
+        project = session.query(Project).filter_by(name="studio").one()
+        env = build_spawn_env(run, project, settings)
+    # an empty roles list would generate zero matrix tests on the worker
+    assert json.loads(env["QA_RUN_ROLES"]) == ["user", "anon"]
+
+
 def test_capabilities_lists_projects(client):
     _create(client)
     caps = client.get("/api/v1/capabilities").json()

@@ -90,7 +90,9 @@ def create_run(
         base_url=base_url,
         app_version=body.app_version,
         requested_routes=body.routes,
-        requested_roles=body.roles or [],
+        # empty roles would generate zero matrix tests worker-side — default to all
+        # of the project's roles
+        requested_roles=body.roles or [r["name"] for r in (project.roles or [])],
         browsers=body.browsers or [],
         viewports=body.viewports or [],
         capture_config=body.capture or {},
