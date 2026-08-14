@@ -1,4 +1,4 @@
-// Run orchestrator for the Footprints QA browser worker (v0.1). Invoked by the control
+// Run orchestrator for the Auto QA browser worker (v0.1). Invoked by the control
 // plane as `npx tsx src/runner.ts` (cwd = browser-worker). Deliberately thin: every
 // decision (payload shape, flake verdict, artifact keys/types, CLI args) is delegated to
 // the pure, unit-tested helpers under src/lib/*.ts and src/postprocess/*.ts — this file is

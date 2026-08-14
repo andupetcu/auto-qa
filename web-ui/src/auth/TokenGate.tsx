@@ -77,7 +77,7 @@ export function TokenGate({ children }: { children: React.ReactNode }) {
       <form className={styles.card} onSubmit={handleSubmit}>
         <div className={styles.brandRow}>
           <div className={styles.logo}>Q</div>
-          <Title3>Footprints QA</Title3>
+          <Title3>Auto QA</Title3>
         </div>
         <Body1>Enter the API bearer token to connect to the control plane.</Body1>
         <Field

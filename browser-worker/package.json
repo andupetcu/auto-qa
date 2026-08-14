@@ -1,5 +1,5 @@
 {
-  "name": "footprints-qa-browser-worker",
+  "name": "auto-qa-browser-worker",
   "version": "0.1.0",
   "private": true,
   "type": "module",

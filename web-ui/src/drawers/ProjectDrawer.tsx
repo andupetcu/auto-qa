@@ -239,7 +239,7 @@ export function ProjectDrawer({
               className={styles.mono}
               value={credUser}
               onChange={(_, data) => setCredUser(data.value)}
-              placeholder="qa-account@footprints.media"
+              placeholder="qa-account@example.com"
               autoComplete="off"
               spellCheck={false}
             />

@@ -193,7 +193,7 @@ export function AppShell() {
       <div className={styles.header}>
         <div className={styles.brand}>
           <div className={styles.logo}>Q</div>
-          <div className={styles.title}>Footprints QA</div>
+          <div className={styles.title}>Auto QA</div>
         </div>
         <div className={styles.divider} />
         <div className={styles.pill}>

@@ -41,14 +41,17 @@ _SCHEDULER_INTERVAL_SECONDS = 30
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-async def _scheduler_tick(app: FastAPI) -> None:
-    """One scheduler pass: trigger a run for every project whose cron is due."""
+async def _scheduler_tick(app: FastAPI, now: datetime | None = None) -> None:
+    """One scheduler pass: trigger a run for every project whose cron is due, then
+    advance its last_scheduled_at so the same boundary can't fire twice. `now` is
+    injectable for tests."""
     from app.api.runs import create_run_row
     from app.db import Project
     from app.services.scheduler import projects_due
 
     settings = app.state.settings
-    now = datetime.now(timezone.utc)
+    if now is None:
+        now = datetime.now(timezone.utc)
     with app.state.SessionLocal() as session:
         projects = session.query(Project).all()
         for project in projects_due(projects, now):
@@ -119,7 +122,7 @@ def create_app(settings: Settings | None = None, webhook_transport=None) -> Fast
     if settings is None:
         settings = Settings()
 
-    app = FastAPI(title="Footprints QA Control Plane", version="0.1", lifespan=_lifespan)
+    app = FastAPI(title="Auto QA Control Plane", version="0.1", lifespan=_lifespan)
 
     engine, session_local = make_engine_and_sessionmaker(settings.database_url)
     Base.metadata.create_all(bind=engine)

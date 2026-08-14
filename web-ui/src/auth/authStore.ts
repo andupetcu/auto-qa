@@ -2,7 +2,7 @@
 // (which needs to read/clear it outside of React) and React components
 // (which subscribe via useSyncExternalStore).
 
-const STORAGE_KEY = 'footprints-qa.token';
+const STORAGE_KEY = 'auto-qa.token';
 
 type Listener = () => void;
 

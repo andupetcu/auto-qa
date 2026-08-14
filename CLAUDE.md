@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-Monorepo implementing the Footprints AI autonomous QA system, **v0.1 dev stack**: `control-plane/` (Python 3.12, FastAPI + SQLite + local-disk artifacts + MCP), `browser-worker/` (TypeScript, Playwright), `docs/` (design suite). **v0.1 owner constraints: no Docker (ever), no Temporal, no SeaweedFS/Postgres — PM2 + SQLite + subprocess orchestration.** See `docs/plans/v0.1-plan.md` for the authoritative v0.1 architecture, contracts, and probed facts about the dev target (https://fai.footprints.media). Development is test-first: the pytest/vitest suites are the contract; don't change tests to fit code.
+Monorepo implementing the Auto QA autonomous QA system, **v0.1 dev stack**: `control-plane/` (Python 3.12, FastAPI + SQLite + local-disk artifacts + MCP), `browser-worker/` (TypeScript, Playwright), `docs/` (design suite). **v0.1 owner constraints: no Docker (ever), no Temporal, no SeaweedFS/Postgres — PM2 + SQLite + subprocess orchestration.** See `docs/plans/v0.1-plan.md` for the authoritative v0.1 architecture, contracts, and probed facts about the dev target. Development is test-first: the pytest/vitest suites are the contract; don't change tests to fit code.
 
-**Read `docs/00-implementation-guide.md` first** — it is the master document; every other doc is referenced from it. `docs/footprints-qa-architecture.md` is the authoritative long-term architecture; where v0.1 deviates (infra only, not contracts), `docs/plans/v0.1-plan.md` wins.
+**Read `docs/00-implementation-guide.md` first** — it is the master document; every other doc is referenced from it. The architecture doc under `docs/` is the authoritative long-term architecture; where v0.1 deviates (infra only, not contracts), `docs/plans/v0.1-plan.md` wins.
 
 ## Non-negotiable ground rules (from docs/00)
 

@@ -1,6 +1,6 @@
-# footprints-auto-qa
+# Auto QA
 
-Self-hosted autonomous QA for the Footprints AI platform. A deterministic
+Self-hosted autonomous QA for your web app. A deterministic
 tool-and-artifact layer — **zero LLM calls inside** — driven by the Hermes agent layer
 over MCP, with a web console for humans. Dev stack: FastAPI + SQLite + local-disk
 artifacts + Playwright + a React/Fluent UI, run under PM2. **No Docker.**

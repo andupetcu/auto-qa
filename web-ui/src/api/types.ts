@@ -1,4 +1,4 @@
-// Types mirroring the Footprints QA control-plane API contract (/api/v1/*).
+// Types mirroring the Auto QA control-plane API contract (/api/v1/*).
 // Kept hand-written and in lockstep with docs/plans/web-ui-build.md + doc 02.
 
 export type RunStatus =

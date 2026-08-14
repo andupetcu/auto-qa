@@ -82,7 +82,7 @@ class QAMCPServer:
 
 
 def build_mcp(app, settings) -> QAMCPServer:
-    inner = _RawMCPServer(name="footprints-qa", version="0.1")
+    inner = _RawMCPServer(name="auto-qa", version="0.1")
 
     def _client() -> httpx.AsyncClient:
         return httpx.AsyncClient(

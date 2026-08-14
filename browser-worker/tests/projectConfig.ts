@@ -22,7 +22,7 @@ export interface Role {
 
 export type Matrix = Record<string, Record<string, unknown>>;
 
-// Probed defaults against https://fai.footprints.media (2026-08-14) — see tests/selectors.ts.
+// Probed defaults against the app under test (2026-08-14) — see tests/selectors.ts.
 const DEFAULT_SELECTORS: Selectors = {
   loginPath: '/?auth=login',
   loginEmail: 'input[name=username]',
