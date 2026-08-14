@@ -44,4 +44,13 @@ describe('filterConsole', () => {
     expect(rows[0].raw_source).toBe('https://app.test/bundle/index.js:1:88214');
     expect(rows[0].source).toBeNull();
   });
+
+  test('carries the stack through for later frame resolution (doc 06 §2)', () => {
+    const rows = filterConsole([
+      line({ kind: 'pageerror', stack: 'TypeError: boom\n    at https://app.test/bundle/index.js:1:88214' }),
+      line({ level: 'warning', text: 'no stack here' }),
+    ], { topN: 20 });
+    expect(rows[0].stack).toContain('at https://app.test/bundle/index.js:1:88214');
+    expect(rows[1].stack).toBeNull();
+  });
 });

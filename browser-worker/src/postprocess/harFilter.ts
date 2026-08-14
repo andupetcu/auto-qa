@@ -13,7 +13,7 @@ interface HarCfg {
 }
 
 const STATIC_ASSET_RE = /\.(js|css|png|jpe?g|gif|svg|woff2?|ttf|ico|map)(\?|$)/i;
-const ANALYTICS_RE = /analytics|telemetry|sentry|posthog|gtag|beacon|collect/i;
+const ANALYTICS_RE = /analytics|telemetry|sentry|posthog|gtag|beacon/i;
 
 export function filterHar(har: any, cfg: HarCfg): NetworkFailure[] {
   const entries: any[] = har?.log?.entries ?? [];

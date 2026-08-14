@@ -6,6 +6,7 @@ export interface ConsoleEntry {
   text: string;
   source: null;
   raw_source: string | null;
+  stack: string | null;
   count: number;
 }
 
@@ -18,6 +19,7 @@ interface ConsoleLine {
   level: string;
   text: string;
   loc?: { url: string; lineNumber: number; columnNumber: number } | null;
+  stack?: string | null;
 }
 
 export function filterConsole(lines: ConsoleLine[], cfg: ConsoleCfg): ConsoleEntry[] {
@@ -43,6 +45,7 @@ export function filterConsole(lines: ConsoleLine[], cfg: ConsoleCfg): ConsoleEnt
       text: line.text,
       source: null,
       raw_source,
+      stack: line.stack ?? null,
       count: 1,
     });
     order.push(key);
