@@ -30,8 +30,9 @@ async def test_run_suite_and_status_roundtrip(mcp):
 
 
 def test_mcp_http_mount_requires_bearer_token(app):
-    # context manager runs the lifespan, starting the MCP session manager as uvicorn would
-    with TestClient(app) as c:
+    # context manager runs the lifespan, starting the MCP session manager as uvicorn would;
+    # redirects off because real MCP clients do not follow a 307 on POST /mcp
+    with TestClient(app, follow_redirects=False) as c:
         # unauthenticated → 401 before the MCP app ever sees the request
         assert c.post("/mcp", json={}).status_code == 401
         assert c.post("/mcp", json={}, headers={"Authorization": "Bearer wrong"}).status_code == 401

@@ -146,7 +146,13 @@ def rerun_run(
             .filter_by(run_id=run_id, status="failed", flaky=False)
             .all()
         )
-        routes = sorted({r.route_path for r in failed})
+        # suite tests carry route_path=None and cannot be re-targeted by route
+        routes = sorted({r.route_path for r in failed if r.route_path})
+        if not routes:
+            raise ProblemException(
+                400, "No rerunnable routes",
+                "No failed results with a route in the parent run; use scope=full",
+            )
     else:  # full
         routes = list(parent.requested_routes or [])
 

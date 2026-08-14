@@ -17,6 +17,17 @@ def test_ingest_finalize_totals(client):
     assert run["totals"] == {"passed": 1, "failed": 1, "skipped": 0, "flaky": 1}
 
 
+def test_ingest_accepts_null_route_path_for_suite_tests(client):
+    rid = create_run(client)
+    ingest(client, rid, [
+        result_payload("passed", route=None, role="user",
+                       test_name="reports deeplink renders"),
+    ])
+    finalize(client, rid)
+    results = client.get(f"/api/v1/runs/{rid}/results").json()
+    assert results[0]["route_path"] is None
+
+
 def test_started_marks_running(client):
     rid = create_run(client)
     r = client.post(f"/api/v1/internal/runs/{rid}/started")

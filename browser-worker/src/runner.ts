@@ -109,9 +109,12 @@ function runMatrix(
 // throwaway report path and the process exit code are enough.
 function runFlakeRerun(cfg: RunnerConfig, role: string, testTitle: string, outputDir: string): boolean {
   const args = buildFlakeRerunArgs(role, testTitle);
+  // Playwright WIPES outputDir on every invocation — reruns must never share the
+  // matrix run's dir or they delete its attachments before the copy phase
+  const flakeDir = `${outputDir}-flake`;
   const result = spawnSync('npx', ['playwright', ...args], {
     cwd: WORKER_ROOT,
-    env: childEnv(cfg, outputDir, path.join(outputDir, 'flake-report.json')),
+    env: childEnv(cfg, flakeDir, path.join(flakeDir, 'flake-report.json')),
     stdio: 'inherit',
     timeout: FLAKE_RERUN_TIMEOUT_MS,
   });
@@ -247,6 +250,18 @@ async function main(): Promise<void> {
     return;
   }
 
+  // From here the run is marked "running" on the control plane: any uncaught error
+  // must finalize the run as failed or it stays "running" forever with no signal.
+  try {
+    await runToCompletion(cfg);
+  } catch (err) {
+    const detail = `runner crashed: ${(err as Error)?.stack ?? String(err)}`;
+    console.error(`[runner] ${detail}`);
+    await finalizeAndExit(cfg, 'failed', detail.slice(0, 2000));
+  }
+}
+
+async function runToCompletion(cfg: RunnerConfig): Promise<void> {
   const outputDir = path.join(WORKER_ROOT, 'test-results', cfg.runId);
   const reportPath = path.join(outputDir, 'report.json');
   fs.mkdirSync(outputDir, { recursive: true });

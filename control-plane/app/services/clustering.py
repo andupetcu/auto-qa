@@ -33,8 +33,9 @@ def compute_severity(result: TestResult) -> str:
 def signature_hash(signature_input: dict, result: TestResult) -> str:
     error = signature_input.get("normalized_error", "") or ""
     frame = signature_input.get("top_stack_frame", "") or ""
-    route = signature_input.get("route") or result.route_path
-    role = signature_input.get("role") or result.role
+    # suite (non-matrix) results legitimately have no route — never join None
+    route = signature_input.get("route") or result.route_path or ""
+    role = signature_input.get("role") or result.role or ""
     raw = "|".join([error, frame, route, role])
     return hashlib.sha256(raw.encode()).hexdigest()
 

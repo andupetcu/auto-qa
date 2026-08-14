@@ -18,6 +18,16 @@ from mcp.server.mcpserver import MCPServer as _RawMCPServer
 logger = logging.getLogger(__name__)
 
 
+class _McpPathMiddleware:
+    def __init__(self, app):
+        self._app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and scope.get("path") == "/mcp":
+            scope = dict(scope, path="/mcp/")
+        await self._app(scope, receive, send)
+
+
 class BearerAuthASGI:
     """Requires `Authorization: Bearer <token>` before dispatching to the inner app.
 
@@ -32,6 +42,11 @@ class BearerAuthASGI:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
+            # mounted at /mcp with the inner route at "/": a request to exactly /mcp
+            # arrives with path "" and would 307 to /mcp/, which MCP clients don't
+            # follow on POST — normalize instead of redirecting
+            if scope.get("path", "") in ("", "/mcp"):
+                scope = dict(scope, path="/")
             headers = dict(scope.get("headers") or [])
             auth = (headers.get(b"authorization") or b"").decode()
             expected = f"Bearer {self._token}"
@@ -208,6 +223,9 @@ def mount_mcp(app, settings) -> None:
         # inner path "/" so the endpoint is exactly /mcp (default would give /mcp/mcp)
         sub = mcp.streamable_http_app(streamable_http_path="/")
         app.mount("/mcp", BearerAuthASGI(sub, settings.api_token))
+        # the outer router 307s "/mcp" -> "/mcp/" before the mount is entered; MCP
+        # clients don't follow POST redirects, so normalize the path ahead of routing
+        app.add_middleware(_McpPathMiddleware)
         # FastAPI does not run mounted sub-app lifespans; the app's own lifespan
         # (app/main.py) starts this session manager so /mcp works over real HTTP
         app.state.mcp_session_manager = mcp.session_manager

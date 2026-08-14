@@ -50,6 +50,22 @@ def test_bundle_shape(client):
     assert "artifact_expiry" in b
 
 
+def test_failed_suite_test_with_null_route_clusters_cleanly(client):
+    # non-matrix suite specs have route_path=None; finalize must still cluster them
+    rid = create_run(client)
+    ingest(client, rid, [
+        result_payload("failed", route=None, role="user",
+                       test_name="reports deeplink renders for seeded campaign",
+                       signature_input={"normalized_error": "Timed out",
+                                        "top_stack_frame": "", "route": "", "role": "user"}),
+    ])
+    finalize(client, rid)
+    run = client.get(f"/api/v1/runs/{rid}").json()
+    assert run["totals"]["failed"] == 1
+    bundles = client.get(f"/api/v1/runs/{rid}/bundles").json()
+    assert len(bundles) == 1
+
+
 def test_severity_min_filter(client):
     rid = create_run(client)
     ingest(client, rid, [

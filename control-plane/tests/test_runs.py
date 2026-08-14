@@ -72,6 +72,37 @@ def test_rerun_failed_scope(client):
     assert new_run["requested_routes"] == ["/campaigns/reports"]
 
 
+def test_rerun_failed_scope_ignores_null_route_suite_failures(client):
+    rid = create_run(client, routes=["/", "/campaigns/reports"])
+    ingest(client, rid, [
+        result_payload("failed", route="/campaigns/reports", role="user",
+                       signature_input=sig_input(route="/campaigns/reports")),
+        result_payload("failed", route=None, role="user",
+                       test_name="reports deeplink renders",
+                       signature_input={"normalized_error": "x", "top_stack_frame": "",
+                                        "route": "", "role": "user"}),
+    ])
+    finalize(client, rid)
+    r = client.post(f"/api/v1/runs/{rid}/rerun", json={"scope": "failed"})
+    assert r.status_code == 202
+    new_run = client.get(f"/api/v1/runs/{r.json()['run_id']}").json()
+    assert new_run["requested_routes"] == ["/campaigns/reports"]
+
+
+def test_rerun_failed_scope_with_only_suite_failures_is_400(client):
+    rid = create_run(client, routes=["/"])
+    ingest(client, rid, [
+        result_payload("failed", route=None, role="user",
+                       test_name="reports deeplink renders",
+                       signature_input={"normalized_error": "x", "top_stack_frame": "",
+                                        "route": "", "role": "user"}),
+    ])
+    finalize(client, rid)
+    r = client.post(f"/api/v1/runs/{rid}/rerun", json={"scope": "failed"})
+    assert r.status_code == 400
+    assert r.headers["content-type"].startswith("application/problem+json")
+
+
 def test_rerun_full_scope_with_base_url_override(client):
     rid = _run_with_one_failure(client)
     r = client.post(f"/api/v1/runs/{rid}/rerun",

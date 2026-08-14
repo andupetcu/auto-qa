@@ -25,8 +25,8 @@ class ArtifactIngest(BaseModel):
 class ResultIngest(BaseModel):
     test_name: str
     test_file: str
-    route_path: str
-    role: str
+    route_path: str | None = None
+    role: str | None = None
     browser: str | None = None
     viewport: str | None = None
     status: str
