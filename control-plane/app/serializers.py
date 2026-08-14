@@ -24,6 +24,7 @@ def serialize_run(run: TestRun, project_name: str | None = None) -> dict:
         "totals": run.totals,
         "parent_run_id": run.parent_run_id,
         "detail": run.detail,
+        "progress": run.progress,
     }
 
 

@@ -12,6 +12,7 @@ export default defineConfig({
   outputDir: process.env.QA_PW_OUTPUT_DIR ?? 'test-results',
   reporter: [
     ['json', { outputFile: process.env.QA_PW_REPORT ?? 'test-results/report.json' }],
+    ['./progressReporter.ts'],
     ['line'],
   ],
   use: {

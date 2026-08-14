@@ -73,6 +73,8 @@ class TestRun(Base):
     status = Column(String, nullable=False)
     totals = Column(JSON, nullable=True)
     detail = Column(String, nullable=True)
+    worker_pid = Column(Integer, nullable=True)   # spawned runner's process-group leader
+    progress = Column(JSON, nullable=True)        # {phase, done, total, current, updated_at}
 
 
 class TestResult(Base):

@@ -55,10 +55,12 @@ def write_credentials(
     path = Path(settings.credentials_file)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    prefix = key_prefix(project.id)
-    updates = {f"{prefix}_USER_EMAIL": username, f"{prefix}_PASSWORD": password}
+    # keys sit under the user role's credential_ref so the worker resolves them as
+    # ${credential_ref}_EMAIL / _PASSWORD / _TOTP_SEED (auth.setup.ts)
+    ref = user_credential_ref(project.id)
+    updates = {f"{ref}_EMAIL": username, f"{ref}_PASSWORD": password}
     if totp_seed:
-        updates[f"{prefix}_TOTP_SEED"] = totp_seed
+        updates[f"{ref}_TOTP_SEED"] = totp_seed
 
     lines = _read_lines(path)
     remaining = dict(updates)
@@ -81,9 +83,9 @@ def read_credentials_status(settings: Settings, project: Project) -> dict:
     """{username, has_password, has_totp} for `project` — booleans only, never secrets."""
     path = Path(settings.credentials_file)
     env = _parse_env(_read_lines(path))
-    prefix = key_prefix(project.id)
+    ref = user_credential_ref(project.id)
     return {
-        "username": env.get(f"{prefix}_USER_EMAIL") or None,
-        "has_password": bool(env.get(f"{prefix}_PASSWORD")),
-        "has_totp": bool(env.get(f"{prefix}_TOTP_SEED")),
+        "username": env.get(f"{ref}_EMAIL") or None,
+        "has_password": bool(env.get(f"{ref}_PASSWORD")),
+        "has_totp": bool(env.get(f"{ref}_TOTP_SEED")),
     }

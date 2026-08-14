@@ -8,6 +8,34 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import HTMLResponse, Response
+
+
+class _SPAStaticFiles(StaticFiles):
+    """Serve the built SPA. Two local-only conveniences:
+    - fall back to index.html for client-side routes so deep links/refreshes don't 404;
+    - inject the API token into index.html so the same-origin UI auto-connects with no
+      login (the control plane binds to 127.0.0.1, so the token never leaves the host).
+    """
+
+    def __init__(self, *args, api_token: str = "", **kwargs):
+        super().__init__(*args, **kwargs)
+        self._api_token = api_token
+
+    async def get_response(self, path: str, scope) -> Response:
+        # real asset files (assets/*.js, *.css, *.map, favicon…) serve verbatim;
+        # everything else — the root and all client-side routes — gets the injected index
+        candidate = Path(self.directory) / path
+        if path not in ("", ".", "index.html") and candidate.is_file():
+            return await super().get_response(path, scope)
+        return self._inject_index()
+
+    def _inject_index(self) -> HTMLResponse:
+        html = (Path(self.directory) / "index.html").read_text()
+        tag = f"<script>window.__QA_TOKEN__={self._api_token!r};</script>"
+        html = html.replace("</head>", f"{tag}</head>", 1)
+        return HTMLResponse(html)
 
 _SCHEDULER_INTERVAL_SECONDS = 30
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -127,7 +155,12 @@ def create_app(settings: Settings | None = None, webhook_transport=None) -> Fast
     web_ui_dist = _REPO_ROOT / "web-ui" / "dist"
     if web_ui_dist.is_dir():
         try:
-            app.mount("/ui", StaticFiles(directory=str(web_ui_dist), html=True), name="ui")
+            app.mount(
+                "/ui",
+                _SPAStaticFiles(directory=str(web_ui_dist), html=True,
+                                api_token=settings.api_token),
+                name="ui",
+            )
         except Exception:
             logger.exception("failed to mount /ui static files (non-fatal)")
 

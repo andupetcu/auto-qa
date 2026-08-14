@@ -110,7 +110,8 @@ def create_run_row(
     session.add(run)
     session.commit()
 
-    maybe_spawn(run, project, settings)
+    maybe_spawn(run, project, settings)  # sets run.worker_pid
+    session.commit()
     return run
 
 
@@ -157,6 +158,29 @@ def list_runs(session: Session = Depends(get_session)):
 def get_run(run_id: str, session: Session = Depends(get_session)):
     run = _get_run_or_404(session, run_id)
     return serialize_run(run, _project_name(session, run.project_id))
+
+
+TERMINAL_STATUSES = frozenset({"completed", "failed", "auth_expired", "canceled"})
+
+
+@router.post("/runs/{run_id}/cancel", status_code=202)
+def cancel_run(run_id: str, session: Session = Depends(get_session)):
+    run = _get_run_or_404(session, run_id)
+    if run.status in TERMINAL_STATUSES:
+        raise ProblemException(
+            409, "Run already finished",
+            f"Run {run_id} is {run.status} and cannot be canceled",
+        )
+    from app.services.runner import kill_worker
+
+    kill_worker(run.worker_pid)  # best-effort; never raises
+    from datetime import datetime, timezone
+
+    run.status = "canceled"
+    run.ended_at = datetime.now(timezone.utc)
+    run.detail = "canceled by user"
+    session.commit()
+    return {"run_id": run.id, "status": "canceled"}
 
 
 @router.get("/runs/{run_id}/results")
@@ -237,6 +261,7 @@ def rerun_run(
 
     if project is None:
         project = _get_project_or_400(session, DEFAULT_PROJECT_NAME)
-    maybe_spawn(new_run, project, settings)
+    maybe_spawn(new_run, project, settings)  # sets new_run.worker_pid
+    session.commit()
 
     return {"run_id": new_run_id, "status": "queued"}

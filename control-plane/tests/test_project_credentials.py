@@ -23,10 +23,12 @@ def test_put_credentials_writes_secrets_file(client, settings):
     path = Path(settings.credentials_file)
     assert path.exists()
     content = path.read_text()
-    prefix = f"QA_PRJ_{project['id'].upper()}"
-    assert f"{prefix}_USER_EMAIL=qa@example.test" in content
-    assert f"{prefix}_PASSWORD=s3cret!" in content
-    assert f"{prefix}_TOTP_SEED=JBSWY3DPEHPK3PXP" in content
+    # keys sit under the user role's credential_ref (QA_PRJ_<id>_USER) so the worker
+    # resolves ${credential_ref}_EMAIL / _PASSWORD / _TOTP_SEED
+    ref = f"QA_PRJ_{project['id'].upper()}_USER"
+    assert f"{ref}_EMAIL=qa@example.test" in content
+    assert f"{ref}_PASSWORD=s3cret!" in content
+    assert f"{ref}_TOTP_SEED=JBSWY3DPEHPK3PXP" in content
 
     mode = stat.S_IMODE(path.stat().st_mode)
     assert mode == 0o600
@@ -42,9 +44,9 @@ def test_put_credentials_without_totp(client, settings):
     from pathlib import Path
 
     content = Path(settings.credentials_file).read_text()
-    prefix = f"QA_PRJ_{project['id'].upper()}"
-    assert f"{prefix}_PASSWORD=hunter2" in content
-    assert f"{prefix}_TOTP_SEED" not in content
+    ref = f"QA_PRJ_{project['id'].upper()}_USER"
+    assert f"{ref}_PASSWORD=hunter2" in content
+    assert f"{ref}_TOTP_SEED" not in content
 
 
 def test_put_credentials_preserves_other_lines(client, settings):

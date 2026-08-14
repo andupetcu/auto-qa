@@ -62,6 +62,16 @@ def _project_name(session: Session, project_id: str | None) -> str | None:
     return project.name if project else None
 
 
+TERMINAL_STATUSES = frozenset({"completed", "failed", "auth_expired", "canceled"})
+
+
+class ProgressBody(BaseModel):
+    phase: str | None = None
+    done: int | None = None
+    total: int | None = None
+    current: str | None = None
+
+
 @router.post("/runs/{run_id}/results", status_code=204)
 def ingest_results(
     run_id: str,
@@ -142,6 +152,26 @@ def mark_started(
     return {"status": run.status}
 
 
+@router.post("/runs/{run_id}/progress")
+def update_progress(
+    run_id: str,
+    body: ProgressBody,
+    session: Session = Depends(get_session),
+):
+    run = _get_run_or_404(session, run_id)
+    if run.status in TERMINAL_STATUSES:
+        return {"status": run.status}  # ignore stragglers after the run finished
+    prog = dict(run.progress or {})
+    for field in ("phase", "done", "total", "current"):
+        value = getattr(body, field)
+        if value is not None:
+            prog[field] = value
+    prog["updated_at"] = datetime.now(timezone.utc).isoformat()
+    run.progress = prog
+    session.commit()
+    return {"status": run.status}
+
+
 @router.post("/runs/{run_id}/finalize")
 def finalize_run(
     run_id: str,
@@ -151,6 +181,10 @@ def finalize_run(
     settings: Settings = Depends(get_settings),
 ):
     run = _get_run_or_404(session, run_id)
+
+    # a run canceled mid-flight must not be resurrected by a late worker finalize
+    if run.status in TERMINAL_STATUSES:
+        return {"status": run.status, "totals": run.totals}
 
     results = session.query(TestResult).filter_by(run_id=run_id).all()
     totals = {"passed": 0, "failed": 0, "skipped": 0, "flaky": 0}

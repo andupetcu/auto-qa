@@ -85,6 +85,26 @@ function authHeaders(cfg: RunnerConfig): Record<string, string> {
   };
 }
 
+export interface ProgressUpdate {
+  phase?: string;
+  done?: number;
+  total?: number;
+  current?: string | null;
+}
+
+// Best-effort progress ping — never throws, so a progress hiccup can't fail a run.
+export async function postProgress(cfg: RunnerConfig, update: ProgressUpdate): Promise<void> {
+  try {
+    await fetch(`${cfg.cpUrl}/internal/runs/${cfg.runId}/progress`, {
+      method: 'POST',
+      headers: authHeaders(cfg),
+      body: JSON.stringify(update),
+    });
+  } catch {
+    /* progress is advisory */
+  }
+}
+
 export async function postStarted(cfg: RunnerConfig): Promise<void> {
   const res = await fetch(`${cfg.cpUrl}/internal/runs/${cfg.runId}/started`, {
     method: 'POST',

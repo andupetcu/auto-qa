@@ -1,0 +1,21 @@
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: #479ef5;
+}
+
+a:hover {
+  color: #62abf5;
+}
+
+::selection {
+  background: #115ea3;
+  color: #fff;
+}

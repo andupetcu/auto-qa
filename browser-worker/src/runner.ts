@@ -23,6 +23,7 @@ import {
   postStarted,
   postResults,
   postFinalize,
+  postProgress,
   type ArtifactEntry,
   type ResultIngest,
 } from './lib/ingest';
@@ -59,7 +60,12 @@ const fetcher: Fetcher = async (url) => {
   }
 };
 
-function childEnv(cfg: RunnerConfig, outputDir: string, reportPath: string): NodeJS.ProcessEnv {
+function childEnv(
+  cfg: RunnerConfig,
+  outputDir: string,
+  reportPath: string,
+  progress: 'on' | 'off' = 'on',
+): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     QA_PW_OUTPUT_DIR: outputDir,
@@ -68,6 +74,10 @@ function childEnv(cfg: RunnerConfig, outputDir: string, reportPath: string): Nod
   };
   if (cfg.baseUrl) env.QA_RUN_BASE_URL = cfg.baseUrl;
   if (cfg.routes) env.QA_RUN_ROUTES = JSON.stringify(cfg.routes);
+  // per-test progress is posted by the main matrix run only; flake reruns turn it off
+  // so their single-test suites don't reset the main counter
+  if (progress === 'on') env.QA_PROGRESS_PHASE = 'running';
+  else env.QA_PROGRESS_OFF = '1';
   return env;
 }
 
@@ -114,7 +124,7 @@ function runFlakeRerun(cfg: RunnerConfig, role: string, testTitle: string, outpu
   const flakeDir = `${outputDir}-flake`;
   const result = spawnSync('npx', ['playwright', ...args], {
     cwd: WORKER_ROOT,
-    env: childEnv(cfg, flakeDir, path.join(flakeDir, 'flake-report.json')),
+    env: childEnv(cfg, flakeDir, path.join(flakeDir, 'flake-report.json'), 'off'),
     stdio: 'inherit',
     timeout: FLAKE_RERUN_TIMEOUT_MS,
   });
@@ -266,6 +276,7 @@ async function runToCompletion(cfg: RunnerConfig): Promise<void> {
   const reportPath = path.join(outputDir, 'report.json');
   fs.mkdirSync(outputDir, { recursive: true });
 
+  await postProgress(cfg, { phase: 'starting', done: 0, total: 0, current: 'minting sessions' });
   log('running playwright matrix');
   const { code, timedOut } = await runMatrix(cfg, outputDir, reportPath);
   log(`playwright matrix exited (code=${code}, timedOut=${timedOut})`);
@@ -301,11 +312,15 @@ async function runToCompletion(cfg: RunnerConfig): Promise<void> {
   if (hasAnyFailures(results)) {
     const failing = results.filter((r) => isFailureStatus(r.status));
     log(`flake protocol: rerunning ${failing.length} failing result(s), N=${cfg.flakeReruns}`);
+    let flakeDone = 0;
+    await postProgress(cfg, { phase: 'flake-reruns', done: 0, total: failing.length, current: null });
     for (const r of failing) {
+      await postProgress(cfg, { done: flakeDone, total: failing.length, current: r.test_name });
       let rerunsFailed = 0;
       for (let i = 0; i < cfg.flakeReruns; i++) {
         if (runFlakeRerun(cfg, r.role, r.test_name, outputDir)) rerunsFailed++;
       }
+      flakeDone += 1;
       const flaky = isFlaky(rerunsFailed, cfg.flakeReruns);
       flakeInfo.set(attachmentKey(r.role, r.test_name), {
         reruns_attempted: cfg.flakeReruns,
@@ -316,10 +331,13 @@ async function runToCompletion(cfg: RunnerConfig): Promise<void> {
     }
   }
 
+  await postProgress(cfg, { phase: 'post-processing', done: 0, total: results.length, current: null });
   const ingestList: ResultIngest[] = [];
   for (const r of results) {
     ingestList.push(await processResult(cfg, r, attachmentsMap, flakeInfo, cfg.artifactsDir));
+    await postProgress(cfg, { done: ingestList.length, total: results.length, current: r.test_name });
   }
+  await postProgress(cfg, { phase: 'finalizing', current: null });
 
   const authExpiredPath = findAuthExpiredFile(outputDir);
 
