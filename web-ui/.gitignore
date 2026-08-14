@@ -3,3 +3,7 @@ dist
 dist-ssr
 *.local
 .DS_Store
+
+# TS build cache / generated
+*.tsbuildinfo
+vite.config.d.ts
