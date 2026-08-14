@@ -29,10 +29,15 @@ class Settings(BaseSettings):
     credentials_file: str = str(_REPO_ROOT / ".env.credentials")
     role_matrix_fallback_path: str = str(_REPO_ROOT / "browser-worker" / "tests" / "role-matrix.yaml")
     scheduler_enabled: bool = True
+    mcp_allowed_hosts: str = "127.0.0.1:*,localhost:*,[::1]:*"
 
     @property
     def roles_list(self) -> list[str]:
         return [r.strip() for r in self.roles.split(",") if r.strip()]
+
+    @property
+    def mcp_allowed_host_list(self) -> list[str]:
+        return [host.strip() for host in self.mcp_allowed_hosts.split(",") if host.strip()]
 
     @property
     def webhook_url_list(self) -> list[str]:

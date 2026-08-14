@@ -14,6 +14,7 @@ import logging
 
 import httpx
 from mcp.server.mcpserver import MCPServer as _RawMCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 
 logger = logging.getLogger(__name__)
 
@@ -283,7 +284,13 @@ def mount_mcp(app, settings) -> None:
     try:
         mcp = build_mcp(app, settings)
         # inner path "/" so the endpoint is exactly /mcp (default would give /mcp/mcp)
-        sub = mcp.streamable_http_app(streamable_http_path="/")
+        sub = mcp.streamable_http_app(
+            streamable_http_path="/",
+            transport_security=TransportSecuritySettings(
+                enable_dns_rebinding_protection=True,
+                allowed_hosts=settings.mcp_allowed_host_list,
+            ),
+        )
         app.mount("/mcp", BearerAuthASGI(sub, settings.api_token))
         # the outer router 307s "/mcp" -> "/mcp/" before the mount is entered; MCP
         # clients don't follow POST redirects, so normalize the path ahead of routing
