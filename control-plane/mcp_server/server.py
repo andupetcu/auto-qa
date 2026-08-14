@@ -117,6 +117,12 @@ def build_mcp(app, settings) -> QAMCPServer:
             resp.raise_for_status()
             return resp.json()
 
+    async def _delete(path: str):
+        async with _client() as client:
+            resp = await client.delete(path)
+            resp.raise_for_status()
+            return resp.json()
+
     handlers: dict = {}
 
     @inner.tool()
@@ -359,6 +365,13 @@ def build_mcp(app, settings) -> QAMCPServer:
         return await _patch(f"/api/v1/schedules/{project}", body)
 
     handlers["update_schedule"] = update_schedule
+
+    @inner.tool()
+    async def delete_schedule(project: str) -> dict:
+        """Delete a project's schedule while preserving the project."""
+        return await _delete(f"/api/v1/schedules/{project}")
+
+    handlers["delete_schedule"] = delete_schedule
 
     @inner.tool()
     async def pause_schedule(project: str) -> dict:

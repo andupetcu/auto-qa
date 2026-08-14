@@ -127,6 +127,16 @@ def patch_schedule(
     return _serialize(project)
 
 
+@router.delete("/schedules/{id_or_name}")
+def delete_schedule(id_or_name: str, session: Session = Depends(get_session)):
+    project = _get_schedule_project(session, id_or_name)
+    _require_schedule(project)
+    project.schedule_cron = None
+    project.last_scheduled_at = None
+    session.commit()
+    return {"project": project.name, "deleted": True}
+
+
 @router.post("/schedules/{id_or_name}/pause")
 def pause_schedule(id_or_name: str, session: Session = Depends(get_session)):
     project = _get_schedule_project(session, id_or_name)

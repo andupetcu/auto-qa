@@ -11,7 +11,8 @@ EXPECTED_TOOLS = {
     "get_failure_bundles", "get_console_logs", "get_har", "get_artifacts", "rerun",
     "list_projects", "create_project", "update_project",
     "list_schedules", "get_schedule", "create_schedule", "update_schedule",
-    "pause_schedule", "resume_schedule", "run_schedule_now", "get_schedule_history",
+    "delete_schedule", "pause_schedule", "resume_schedule", "run_schedule_now",
+    "get_schedule_history",
 }
 
 
@@ -22,7 +23,7 @@ def mcp(app, settings):
     return build_mcp(app, settings)
 
 
-async def test_exposes_v01_tool_subset(mcp):
+async def test_exposes_v02_tool_set(mcp):
     tools = await mcp.list_tools()
     assert {t.name for t in tools} == EXPECTED_TOOLS
 
@@ -160,6 +161,10 @@ async def test_schedule_lifecycle_via_mcp(mcp):
     )
     history_payload = history[1] if isinstance(history, tuple) else history
     assert history_payload["runs"][0]["id"] == fired_payload["run_id"]
+
+    deleted = await mcp.call_tool("delete_schedule", {"project": "fai"})
+    deleted_payload = deleted[1] if isinstance(deleted, tuple) else deleted
+    assert deleted_payload == {"project": "fai", "deleted": True}
 
 
 async def test_get_failure_bundles_empty_run(mcp):

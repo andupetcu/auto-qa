@@ -58,6 +58,10 @@ def test_schedule_lifecycle_and_history(client):
     assert history[0]["id"] == run_id
     assert history[0]["trigger"] == "schedule"
 
+    deleted = client.delete("/api/v1/schedules/fai")
+    assert deleted.json() == {"project": "fai", "deleted": True}
+    assert client.get("/api/v1/schedules/fai").status_code == 404
+
 
 async def test_new_schedule_starts_at_next_advertised_boundary(client, app):
     with app.state.SessionLocal() as session:
