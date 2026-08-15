@@ -17,6 +17,7 @@ def make_settings(tmp_path, **overrides):
         webhook_secret="whsecret",
         webhook_urls="",
         base_url_default="https://app.example.test",
+        target_allowed_origins="https://*.test",
         database_url=f"sqlite:///{tmp_path / 'qa.db'}",
         artifacts_dir=str(tmp_path / "artifacts"),
         routes_config=str(tmp_path / "routes.yaml"),
@@ -25,6 +26,7 @@ def make_settings(tmp_path, **overrides):
         credentials_file=str(tmp_path / ".env.credentials"),
         role_matrix_fallback_path=str(tmp_path / "role-matrix.yaml"),
         scheduler_enabled=False,
+        cleanup_enabled=False,
     )
     defaults.update(overrides)
     return Settings(**defaults)

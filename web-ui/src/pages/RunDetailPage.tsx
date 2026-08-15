@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+/** @fileoverview Live Auto QA run detail, results, bundles, and rerun controls. */
+
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -129,17 +131,36 @@ export function RunDetailPage() {
     },
   });
 
+  const runStatus = runQuery.data?.status;
+  const runIsActive = runStatus === 'queued' || runStatus === 'running';
+  const previousRunStatus = useRef<Run['status'] | undefined>(undefined);
+
   const resultsQuery = useQuery({
     queryKey: ['runResults', runId],
     queryFn: () => endpoints.runResults(runId as string),
     enabled: Boolean(runId),
+    refetchInterval: runIsActive ? 2000 : false,
   });
 
   const bundlesQuery = useQuery({
     queryKey: ['runBundles', runId],
     queryFn: () => endpoints.runBundles(runId as string),
     enabled: Boolean(runId),
+    refetchInterval: runIsActive ? 2000 : false,
   });
+
+  useEffect(() => {
+    const previousStatus = previousRunStatus.current;
+    previousRunStatus.current = runStatus;
+    const wasActive = previousStatus === 'queued' || previousStatus === 'running';
+    if (!runId || !wasActive || runIsActive) return;
+
+    // Fetch once after the terminal transition so late-ingested results and bundles
+    // cannot leave the detail page showing the previous polling response.
+    void queryClient.invalidateQueries({ queryKey: ['runResults', runId] });
+    void queryClient.invalidateQueries({ queryKey: ['runBundles', runId] });
+    void queryClient.invalidateQueries({ queryKey: ['runs'] });
+  }, [queryClient, runId, runIsActive, runStatus]);
 
   const rerunMutation = useMutation({
     mutationFn: (scope: 'failed' | 'full') => endpoints.rerun(runId as string, { scope }),
@@ -301,7 +322,7 @@ export function RunDetailPage() {
             app_version: <span className={styles.metaValue}>{run.app_version ?? '—'}</span>
           </span>
           <span>
-            started: <span className={styles.metaValue}>{new Date(run.started_at).toLocaleString()}</span>
+            started: <span className={styles.metaValue}>{run.started_at ? new Date(run.started_at).toLocaleString() : '—'}</span>
           </span>
           <span>
             duration:{' '}

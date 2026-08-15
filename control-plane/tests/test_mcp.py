@@ -8,7 +8,8 @@ from conftest import create_run, ingest, result_payload
 EXPECTED_TOOLS = {
     "capabilities", "list_routes", "run_suite", "get_run_status", "get_run_results",
     "cancel_run",
-    "get_failure_bundles", "get_console_logs", "get_har", "get_artifacts", "rerun",
+    "get_failure_bundles", "get_console_logs", "get_har", "get_artifacts",
+    "get_visual_evidence", "rerun",
     "list_projects", "create_project", "update_project",
     "list_schedules", "get_schedule", "create_schedule", "update_schedule",
     "delete_schedule", "pause_schedule", "resume_schedule", "run_schedule_now",
@@ -173,3 +174,18 @@ async def test_get_failure_bundles_empty_run(mcp):
     bundles = await mcp.call_tool("get_failure_bundles", {"run_id": payload["run_id"]})
     bundles_payload = bundles[1] if isinstance(bundles, tuple) else bundles
     assert bundles_payload["bundles"] == []
+
+
+async def test_get_visual_evidence_exposes_explicit_not_captured_state(mcp, client):
+    run_id = create_run(client)
+    ingest(client, run_id, [result_payload("passed")])
+    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()[0]["id"]
+
+    out = await mcp.call_tool("get_visual_evidence", {"result_id": result_id})
+    payload = out[1] if isinstance(out, tuple) else out
+
+    assert payload["status"] == "not_captured"
+    assert payload["frames"] == []
+    assert payload["finalScreenshot"] is None
+    assert payload["contactSheet"] is None
+    assert payload["manifest"] is None

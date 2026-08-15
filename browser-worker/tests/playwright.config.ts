@@ -1,5 +1,8 @@
 import { defineConfig } from '@playwright/test';
+import { parseCapturePolicy } from '../src/visual/policy';
 import { resolveRoles, sessionStatePath } from './projectConfig';
+
+const capturePolicy = parseCapturePolicy(process.env.QA_RUN_CAPTURE_POLICY);
 
 const roles = resolveRoles(process.env).map(r => r.name);
 const browserName = (process.env.QA_PW_BROWSER ?? 'chromium') as
@@ -24,9 +27,10 @@ export default defineConfig({
     baseURL: process.env.QA_RUN_BASE_URL ?? process.env.QA_BASE_URL_DEFAULT,
     browserName,
     viewport,
-    trace: 'on', // traces for passing runs too (arch §3.3)
-    video: 'retain-on-failure',
-    screenshot: 'only-on-failure',
+    trace: capturePolicy.trace,
+    // Context video and all screenshots are custom fixtures so masks apply before bytes exist.
+    video: 'off',
+    screenshot: 'off',
   },
   projects: [
     { name: 'setup', testMatch: /auth\.setup\.ts/ },

@@ -5,8 +5,8 @@ export function formatDurationMs(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-export function formatDurationRange(startedAt: string, endedAt: string | null): string {
-  if (!endedAt) return '—';
+export function formatDurationRange(startedAt: string | null, endedAt: string | null): string {
+  if (!startedAt || !endedAt) return '—';
   const ms = new Date(endedAt).getTime() - new Date(startedAt).getTime();
   if (Number.isNaN(ms) || ms < 0) return '—';
   const totalSeconds = Math.round(ms / 1000);
@@ -23,7 +23,7 @@ export function RunDurationText({
   startedAt,
   endedAt,
 }: {
-  startedAt: string;
+  startedAt: string | null;
   endedAt: string | null;
 }) {
   return <Mono>{formatDurationRange(startedAt, endedAt)}</Mono>;

@@ -43,6 +43,30 @@ const useStyles = makeStyles({
     maxHeight: '100%',
     display: 'block',
   },
+  visualTimeline: {
+    display: 'flex',
+    gap: '8px',
+    overflowX: 'auto',
+    paddingBottom: '4px',
+    marginTop: '10px',
+  },
+  visualFrame: {
+    minWidth: '150px',
+    padding: '8px 10px',
+    borderRadius: tokens.borderRadiusMedium,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: '#191919',
+    fontSize: '11px',
+    color: tokens.colorNeutralForeground3,
+  },
+  visualWarning: {
+    marginTop: '8px',
+    padding: '8px 10px',
+    borderRadius: tokens.borderRadiusMedium,
+    border: '1px solid #7a5c00',
+    color: '#e6c86e',
+    fontSize: '11px',
+  },
   screenshotNone: {
     padding: '14px 16px',
     borderRadius: tokens.borderRadiusMedium,
@@ -149,13 +173,20 @@ export function ResultDrawer({
     queryFn: () => endpoints.resultArtifacts(resultId as string),
     enabled: Boolean(resultId) && open,
   });
+  const visualQuery = useQuery({
+    queryKey: ['resultVisualEvidence', resultId],
+    queryFn: () => endpoints.resultVisualEvidence(resultId as string),
+    enabled: Boolean(resultId) && open,
+  });
 
   if (!result) {
     return <DrawerShell open={open} onClose={onClose} titleContent={null} children={null} />;
   }
 
-  const screenshot = artifactsQuery.data?.find((a) => a.type === 'screenshot');
-  const isFailureLike = result.status === 'failed' || result.status === 'timed_out';
+  const legacyScreenshot = artifactsQuery.data?.find((a) => a.type === 'screenshot');
+  const visual = visualQuery.data?.status === 'captured' ? visualQuery.data : null;
+  const screenshotUrl = visual?.finalScreenshot?.artifact?.url ?? legacyScreenshot?.url;
+  const contactSheetUrl = visual?.contactSheet?.artifact?.url;
 
   async function openFullHar() {
     if (!resultId) return;
@@ -209,25 +240,47 @@ export function ResultDrawer({
       </div>
 
       <div>
-        <SectionLabel>Screenshot</SectionLabel>
-        {isFailureLike ? (
-          screenshot ? (
+        <SectionLabel>Visual evidence</SectionLabel>
+        {contactSheetUrl ? (
+          <>
             <div className={styles.screenshotFailed}>
-              <img className={styles.screenshotImg} src={screenshot.url} alt="Failure screenshot" />
+              <img className={styles.screenshotImg} src={contactSheetUrl} alt="Loading-sequence contact sheet" />
             </div>
-          ) : (
+            <div className={styles.visualTimeline} aria-label="Capture timeline">
+              {visual?.frames.map((frame) => (
+                <a
+                  key={`${frame.index}-${frame.sha256}`}
+                  className={styles.visualFrame}
+                  href={frame.artifact?.url}
+                  target={frame.artifact ? '_blank' : undefined}
+                  rel={frame.artifact ? 'noreferrer' : undefined}
+                  style={{ textDecoration: 'none', pointerEvents: frame.artifact ? 'auto' : 'none' }}
+                >
+                  <div><Mono>#{frame.index}</Mono> {frame.milestone}</div>
+                  <div>{new Date(frame.capturedAt).toLocaleTimeString()}</div>
+                  <div><Mono>{frame.width}&times;{frame.height}</Mono></div>
+                </a>
+              ))}
+            </div>
+          </>
+        ) : null}
+        {screenshotUrl ? (
+          <>
+            <div className={styles.idText} style={{ margin: '10px 0 6px' }}>Final asserted state</div>
             <div className={styles.screenshotFailed}>
-              <span className={styles.idText}>No screenshot captured for this failure.</span>
+              <img className={styles.screenshotImg} src={screenshotUrl} alt="Masked final screenshot" />
             </div>
-          )
+          </>
         ) : (
           <div className={styles.screenshotNone}>
-            No failure screenshot &mdash; capture policy is{' '}
-            <Mono>screenshot: &apos;only-on-failure&apos;</Mono>. Timeline frames for this test
-            are inside <Mono>trace.zip</Mono> (open with{' '}
-            <Mono>npx playwright show-trace</Mono>).
+            {visualQuery.isLoading
+              ? 'Loading visual evidence…'
+              : 'No visual evidence was captured for this result.'}
           </div>
         )}
+        {visual?.warnings.map((warning, index) => (
+          <div key={index} className={styles.visualWarning}>{warning}</div>
+        ))}
       </div>
 
       <div>

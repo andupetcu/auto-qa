@@ -1,3 +1,5 @@
+/** @fileoverview Drawer for creating one validated Auto QA suite run. */
+
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -84,6 +86,22 @@ function toggleSet<T>(set: Set<T>, value: T): Set<T> {
   return next;
 }
 
+function createIdempotencyKey(): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
+  }
+
+  // randomUUID is secure-context-only in some browsers, while getRandomValues
+  // remains available on the internal HTTP deployment used by Auto QA.
+  const bytes = new Uint8Array(16);
+  cryptoApi.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0'));
+  return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
+}
+
 export function NewRunDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const styles = useStyles();
   const navigate = useNavigate();
@@ -119,7 +137,7 @@ export function NewRunDrawer({ open, onClose }: { open: boolean; onClose: () => 
 
   useEffect(() => {
     if (open) {
-      setIdempotencyKey(crypto.randomUUID());
+      setIdempotencyKey(createIdempotencyKey());
     }
   }, [open]);
 
@@ -146,7 +164,7 @@ export function NewRunDrawer({ open, onClose }: { open: boolean; onClose: () => 
   const createMutation = useMutation({
     mutationFn: () => {
       const input: RunCreateInput = {
-        routes: routesAll ? 'ALL' : Array.from(selectedRoutes),
+        routes: routesAll ? ['ALL'] : Array.from(selectedRoutes),
         project: projectName ?? undefined,
         roles: Array.from(roles),
         browsers: Array.from(browsers),

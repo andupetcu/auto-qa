@@ -17,6 +17,7 @@ from app.services.credentials import (
     user_credential_ref,
     write_credentials,
 )
+from app.services.target_policy import require_target_allowed, target_origin
 from app.settings import Settings
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -175,6 +176,11 @@ def create_project(
 ):
     _require_safe("project", body.name)
     _validate_roles(body.roles)
+    target_origin(body.base_url_default)
+    if settings.target_allowed_origin_list:
+        require_target_allowed(
+            body.base_url_default, settings.target_allowed_origin_list
+        )
     if body.schedule_cron is not None:
         _validate_schedule_cron(body.schedule_cron)
     existing = session.query(Project).filter_by(name=body.name).first()
@@ -238,6 +244,11 @@ def patch_project(
     was_enabled = project.enabled
 
     if body.base_url_default is not None:
+        target_origin(body.base_url_default)
+        if settings.target_allowed_origin_list:
+            require_target_allowed(
+                body.base_url_default, settings.target_allowed_origin_list
+            )
         project.base_url_default = body.base_url_default
     if body.selectors is not None:
         project.selectors = body.selectors

@@ -1,3 +1,5 @@
+/** @fileoverview Auto QA project administration and latest-run status. */
+
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -151,7 +153,10 @@ export function ProjectsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: endpoints.projects });
-  const runsQuery = useQuery({ queryKey: ['runs'], queryFn: () => endpoints.runs({ limit: 50 }) });
+  const runsQuery = useQuery({
+    queryKey: ['runs', 'projects', { limit: 50 }],
+    queryFn: () => endpoints.runs({ limit: 50 }),
+  });
 
   const lastRunByProject = useMemo(() => {
     const map = new Map<string, Run>();
@@ -280,7 +285,7 @@ export function ProjectsPage() {
                     <span className={styles.lastRunLabel}>last run</span>
                     <RunStatusBadge status={lastRun.status} />
                     <span className={styles.lastRunWhen}>
-                      {new Date(lastRun.started_at).toLocaleString()}
+                      {lastRun.started_at ? new Date(lastRun.started_at).toLocaleString() : '—'}
                     </span>
                     <Mono>
                       {lastRun.totals

@@ -37,6 +37,21 @@ def test_create_project_with_routes(client):
     assert {x["path"] for x in routes} == {"/", "/settings"}
 
 
+def test_create_project_rejects_unapproved_target_origin(client):
+    """Project defaults cannot bypass the installation target policy."""
+    response = client.post(
+        "/api/v1/projects",
+        json={
+            "name": "unapproved",
+            "base_url_default": "https://attacker.example.invalid",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["title"] == "Target not allowed"
+
+
 def test_duplicate_project_name_is_409(client):
     _create(client)
     r = client.post("/api/v1/projects", json=STUDIO)

@@ -1,3 +1,5 @@
+/** @fileoverview Typed Auto QA control-plane endpoint adapters. */
+
 import { api } from './client';
 import type {
   Capabilities,
@@ -18,6 +20,7 @@ import type {
   RunStatus,
   SignedArtifact,
   TestResult,
+  VisualEvidence,
 } from './types';
 
 export const endpoints = {
@@ -38,8 +41,13 @@ export const endpoints = {
   routes: (project?: string) => api.get<Route[]>('/routes', { project }),
   matrix: (project?: string) => api.get<MatrixRow[]>('/matrix', { project }),
 
-  runs: (params?: { limit?: number; status?: RunStatus; before?: string }) =>
-    api.get<Run[]>('/runs', params),
+  runs: (params?: {
+    limit?: number;
+    status?: RunStatus;
+    project?: string;
+    trigger?: string;
+    before?: string;
+  }) => api.get<Run[]>('/runs', params),
   run: (id: string) => api.get<Run>(`/runs/${encodeURIComponent(id)}`),
   createRun: (input: RunCreateInput, idempotencyKey: string) =>
     api.post<RunCreateResponse>('/runs', input, { 'Idempotency-Key': idempotencyKey }),
@@ -65,4 +73,6 @@ export const endpoints = {
     }),
   resultArtifacts: (resultId: string, types?: string) =>
     api.get<SignedArtifact[]>(`/results/${encodeURIComponent(resultId)}/artifacts`, { types }),
+  resultVisualEvidence: (resultId: string) =>
+    api.get<VisualEvidence>(`/results/${encodeURIComponent(resultId)}/visual-evidence`),
 };

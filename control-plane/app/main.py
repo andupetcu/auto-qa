@@ -95,11 +95,33 @@ async def _scheduler_loop(app: FastAPI) -> None:
             logger.exception("scheduler loop iteration failed")
 
 
+async def _cleanup_loop(app: FastAPI) -> None:
+    """Run deterministic artifact reconciliation at the configured interval."""
+    from app.services.artifact_cleanup import cleanup_artifacts
+
+    while True:
+        try:
+            await asyncio.sleep(app.state.settings.cleanup_interval_seconds)
+
+            def run_cleanup_pass():
+                with app.state.SessionLocal() as session:
+                    return cleanup_artifacts(session, app.state.settings)
+
+            app.state.last_artifact_cleanup = await asyncio.to_thread(run_cleanup_pass)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("artifact cleanup iteration failed")
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     scheduler_task = None
+    cleanup_task = None
     if getattr(app.state.settings, "scheduler_enabled", False):
         scheduler_task = asyncio.create_task(_scheduler_loop(app))
+    if getattr(app.state.settings, "cleanup_enabled", False):
+        cleanup_task = asyncio.create_task(_cleanup_loop(app))
 
     try:
         # FastAPI never runs mounted sub-app lifespans; the MCP streamable-HTTP
@@ -112,12 +134,13 @@ async def _lifespan(app: FastAPI):
             async with sm.run():
                 yield
     finally:
-        if scheduler_task is not None:
-            scheduler_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await scheduler_task
+        for task in (scheduler_task, cleanup_task):
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
 
-from app.api import artifacts, capabilities, internal, projects as projects_api, results
+from app.api import artifacts, capabilities, internal, maintenance as maintenance_api, projects as projects_api, results
 from app.api import matrix as matrix_api
 from app.api import routes as routes_api
 from app.api import runs, schedules as schedules_api
@@ -143,6 +166,7 @@ def create_app(settings: Settings | None = None, webhook_transport=None) -> Fast
     app.state.SessionLocal = session_local
     app.state.webhook_transport = webhook_transport
     app.state.event_sequences = {}
+    app.state.last_artifact_cleanup = None
 
     with session_local() as session:
         default_project = ensure_default_project(session, settings)
@@ -157,6 +181,7 @@ def create_app(settings: Settings | None = None, webhook_transport=None) -> Fast
     app.include_router(runs.router, prefix="/api/v1")
     app.include_router(schedules_api.router, prefix="/api/v1")
     app.include_router(results.router, prefix="/api/v1")
+    app.include_router(maintenance_api.router, prefix="/api/v1")
     app.include_router(internal.router, prefix="/api/v1/internal")
     app.include_router(artifacts.router)  # unauthenticated, signed URLs only
 

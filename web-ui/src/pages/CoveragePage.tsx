@@ -1,3 +1,5 @@
+/** @fileoverview Coverage and flake-rate reporting for the selected Auto QA project. */
+
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Dropdown, Option, makeStyles, tokens } from '@fluentui/react-components';
@@ -103,13 +105,10 @@ export function CoveragePage() {
   });
   const runsQuery = useQuery({
     queryKey: ['runs', 'coverage', project],
-    queryFn: () => endpoints.runs({ limit: 20, status: 'completed' }),
+    queryFn: () => endpoints.runs({ limit: 20, status: 'completed', project }),
   });
 
-  const latestRun = useMemo(() => {
-    const runs = (runsQuery.data ?? []).filter((r) => !project || r.project === project);
-    return runs[0];
-  }, [runsQuery.data, project]);
+  const latestRun = runsQuery.data?.[0];
 
   const resultsQuery = useQuery({
     queryKey: ['runResults', latestRun?.id],

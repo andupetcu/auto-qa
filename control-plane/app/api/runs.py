@@ -11,8 +11,10 @@ from app.deps import get_session, get_settings, require_auth
 from app.ids import new_id
 from app.problems import ProblemException
 from app.serializers import serialize_result, serialize_run
+from app.services.capture_policy import normalize_capture_policy
 from app.services.discovery import DEFAULT_PROJECT_NAME
 from app.services.runner import maybe_spawn
+from app.services.target_policy import require_target_allowed
 from app.settings import Settings
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -105,18 +107,23 @@ def _create_run_row_unlocked(
             f"Roles not configured for project {project.name!r}: {unknown_roles}",
         )
 
+    target_url = base_url or project.base_url_default
+    allowed_origins = settings.target_allowed_origin_list or [project.base_url_default]
+    require_target_allowed(target_url, allowed_origins)
+
+    capture_config = normalize_capture_policy(capture, settings)
     run_id = new_id("run")
     run = TestRun(
         id=run_id,
         project_id=project.id,
         trigger=trigger,
-        base_url=base_url or project.base_url_default,
+        base_url=target_url,
         app_version=app_version,
         requested_routes=routes,
         requested_roles=requested_roles,
         browsers=browsers or [],
         viewports=viewports or [],
-        capture_config=capture or {},
+        capture_config=capture_config,
         idempotency_key=idempotency_key,
         parent_run_id=parent_run_id,
         started_at=None,
@@ -225,9 +232,29 @@ def create_run(
 
 
 @router.get("/runs")
-def list_runs(session: Session = Depends(get_session)):
-    rows = session.query(TestRun).order_by(TestRun.id).all()
-    return [serialize_run(r, _project_name(session, r.project_id)) for r in rows]
+def list_runs(
+    project: str | None = None,
+    status: str | None = None,
+    trigger: str | None = None,
+    before: str | None = None,
+    limit: int = Query(default=50, ge=1, le=500),
+    session: Session = Depends(get_session),
+):
+    """Return newest runs first with deterministic cursor-based filtering."""
+    query = session.query(TestRun, Project.name).outerjoin(
+        Project, TestRun.project_id == Project.id
+    )
+    if project is not None:
+        query = query.filter(Project.name == project)
+    if status is not None:
+        query = query.filter(TestRun.status == status)
+    if trigger is not None:
+        query = query.filter(TestRun.trigger == trigger)
+    if before is not None:
+        query = query.filter(TestRun.id < before)
+
+    rows = query.order_by(TestRun.id.desc()).limit(limit).all()
+    return [serialize_run(run, project_name) for run, project_name in rows]
 
 
 @router.get("/runs/{run_id}")

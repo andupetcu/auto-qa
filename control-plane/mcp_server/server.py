@@ -253,6 +253,13 @@ def build_mcp(app, settings) -> QAMCPServer:
     handlers["get_artifacts"] = get_artifacts
 
     @inner.tool()
+    async def get_visual_evidence(result_id: str) -> dict:
+        """Return the bounded visual timeline, manifest, warnings, and signed images."""
+        return await _get(f"/api/v1/results/{result_id}/visual-evidence")
+
+    handlers["get_visual_evidence"] = get_visual_evidence
+
+    @inner.tool()
     async def rerun(
         run_id: str,
         scope: str = "failed",

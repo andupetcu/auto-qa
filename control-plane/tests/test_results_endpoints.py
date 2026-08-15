@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from conftest import create_run, finalize, ingest, result_payload, sig_input
 
 CONSOLE = [
@@ -19,8 +21,12 @@ def _seed(client, with_har_artifact=False):
     rid = create_run(client)
     artifacts = []
     if with_har_artifact:
-        artifacts = [{"type": "har", "storage_key": f"runs/{rid}/t1/network.har",
-                      "bytes": 100}]
+        storage_key = f"runs/{rid}/t1/network.har"
+        path = Path(client.app.state.settings.artifacts_dir) / storage_key
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('{"log":{"entries":[]}}')
+        artifacts = [{"type": "har", "storage_key": storage_key,
+                      "bytes": path.stat().st_size}]
     ingest(client, rid, [result_payload(
         "failed", signature_input=sig_input(),
         console_summary=CONSOLE, network_summary=NETWORK, artifacts=artifacts)])

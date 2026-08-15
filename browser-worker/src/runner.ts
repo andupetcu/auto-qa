@@ -1,8 +1,8 @@
-// Run orchestrator for the Auto QA browser worker (v0.2). Invoked by the control
-// plane as `npx tsx src/runner.ts` (cwd = browser-worker). Deliberately thin: every
-// decision (payload shape, flake verdict, artifact keys/types, CLI args) is delegated to
-// the pure, unit-tested helpers under src/lib/*.ts and src/postprocess/*.ts — this file is
-// just subprocess/HTTP/filesystem glue, exercised for real by the live E2E smoke.
+/**
+ * @fileoverview Run orchestrator for the Auto QA browser worker. Invoked by the
+ * control plane as `npx tsx src/runner.ts`; delegates policy and payload decisions
+ * to unit-tested helpers and keeps subprocess/HTTP/filesystem glue explicit.
+ */
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,7 +11,13 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig, type RunnerConfig } from './lib/config';
 import { buildMatrixArgs, buildFlakeRerunArgs } from './lib/playwrightArgs';
 import { hasAnyFailures, isFailureStatus, isFlaky, setupFailed } from './lib/flake';
-import { collectAttachments, attachmentKey, mapAttachmentType, type RawAttachment } from './lib/attachments';
+import {
+  collectAttachments,
+  attachmentKey,
+  bindVisualManifestAttachmentNames,
+  mapAttachmentType,
+  type RawAttachment,
+} from './lib/attachments';
 import { resultKey } from './lib/slug';
 import {
   buildFailedAction,
@@ -148,9 +154,12 @@ async function processResult(
   const artifacts: ArtifactEntry[] = [];
   const artifactPaths = new Map<string, string>();
 
+  bindVisualManifestAttachmentNames(rawAttachments);
+
   for (const att of rawAttachments) {
     const type = mapAttachmentType(att.name);
     if (!type || !att.path || !fs.existsSync(att.path)) continue;
+    if (type === 'screenshot_frame' && !cfg.capturePolicy.retainIntermediateFrames) continue;
     const destPath = path.join(destDir, path.basename(att.path));
     fs.copyFileSync(att.path, destPath);
     const bytes = fs.statSync(destPath).size;
@@ -347,8 +356,9 @@ async function runToCompletion(cfg: RunnerConfig): Promise<void> {
   try {
     await postResults(cfg, ingestList);
   } catch (err) {
-    console.error(`[runner] control plane unreachable (results): ${(err as Error).message}`);
-    process.exit(1);
+    const detail = `result ingestion failed: ${(err as Error).message}`.slice(0, 2000);
+    console.error(`[runner] ${detail}`);
+    await finalizeAndExit(cfg, 'failed', detail);
     return;
   }
 

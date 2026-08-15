@@ -11,7 +11,10 @@ const ARTIFACT_FILENAMES: Record<ArtifactType, string> = {
   video: 'video.webm',
   frames: 'frames.zip',
   sheet: 'sheet.csv',
-  screenshot: 'failure.png',
+  screenshot: 'final-screenshot.png',
+  screenshot_frame: 'timeline-frame.png',
+  contact_sheet: 'contact-sheet.webp',
+  visual_manifest: 'visual-manifest.json',
   console: 'console.jsonl',
 };
 

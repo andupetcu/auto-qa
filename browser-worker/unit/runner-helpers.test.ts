@@ -54,6 +54,9 @@ describe('config: loadConfig', () => {
     expect(cfg.flakeReruns).toBe(3);
     expect(cfg.harConfig).toEqual({ bodyBytes: 512, topN: 10, slowMs: 3000 });
     expect(cfg.consoleConfig).toEqual({ topN: 20 });
+    expect(cfg.capturePolicy.loadingSequence.maxFrames).toBe(6);
+    expect(cfg.capturePolicy.finalScreenshot.enabled).toBe(true);
+    expect(cfg.capturePolicy.maskSelectors).toContain("input[type='password']");
   });
 
   test('parses overrides from env', () => {
@@ -72,6 +75,22 @@ describe('config: loadConfig', () => {
       QA_HAR_TOP_N: '20',
       QA_SLOW_REQUEST_MS: '5000',
       QA_CONSOLE_TOP_N: '30',
+      QA_RUN_CAPTURE_POLICY: JSON.stringify({
+        version: 1,
+        finalScreenshot: { enabled: true, fullPage: false, format: 'jpeg' },
+        loadingSequence: {
+          enabled: true,
+          maxFrames: 3,
+          milestones: ['navigation', 'asserted'],
+          delaysMs: [500],
+        },
+        contactSheet: { enabled: true, format: 'webp', quality: 90 },
+        trace: 'retain-on-failure',
+        video: 'off',
+        har: 'reduced',
+        retainIntermediateFrames: true,
+        maskSelectors: ['[data-secret]'],
+      }),
     } as any, '/work/browser-worker');
     expect(cfg.cpUrl).toBe('http://cp.local/api/v1');
     expect(cfg.baseUrl).toBe('https://run.example');
@@ -84,6 +103,13 @@ describe('config: loadConfig', () => {
     expect(cfg.flakeReruns).toBe(5);
     expect(cfg.harConfig).toEqual({ bodyBytes: 1024, topN: 20, slowMs: 5000 });
     expect(cfg.consoleConfig).toEqual({ topN: 30 });
+    expect(cfg.capturePolicy.finalScreenshot).toEqual({
+      enabled: true,
+      fullPage: false,
+      format: 'jpeg',
+    });
+    expect(cfg.capturePolicy.loadingSequence.maxFrames).toBe(3);
+    expect(cfg.capturePolicy.retainIntermediateFrames).toBe(true);
   });
 
   test('rejects multiple browser or viewport selectors in one subprocess', () => {
@@ -95,6 +121,17 @@ describe('config: loadConfig', () => {
       ...REQUIRED,
       QA_RUN_VIEWPORTS: '["1440x900", "390x844"]',
     } as any)).toThrow(/exactly one viewport/);
+  });
+
+  test('rejects malformed worker capture-policy snapshots', () => {
+    expect(() => loadConfig({
+      ...REQUIRED,
+      QA_RUN_CAPTURE_POLICY: '{nope',
+    } as any)).toThrow(/QA_RUN_CAPTURE_POLICY/);
+    expect(() => loadConfig({
+      ...REQUIRED,
+      QA_RUN_CAPTURE_POLICY: JSON.stringify({ version: 2 }),
+    } as any)).toThrow(/capture policy version/);
   });
 
   test('QA_RUN_BASE_URL falls back to QA_BASE_URL_DEFAULT', () => {
@@ -138,6 +175,9 @@ describe('attachments: mapAttachmentType / attachmentKey / collectAttachments', 
   test('maps known attachment names to artifact types', () => {
     expect(mapAttachmentType('trace')).toBe('trace');
     expect(mapAttachmentType('screenshot')).toBe('screenshot');
+    expect(mapAttachmentType('screenshot_frame')).toBe('screenshot_frame');
+    expect(mapAttachmentType('contact_sheet')).toBe('contact_sheet');
+    expect(mapAttachmentType('visual_manifest')).toBe('visual_manifest');
     expect(mapAttachmentType('video')).toBe('video');
     expect(mapAttachmentType('har')).toBe('har');
     expect(mapAttachmentType('console')).toBe('console');

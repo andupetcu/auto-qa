@@ -1,5 +1,7 @@
 import path from 'node:path';
 
+import { parseCapturePolicy, type CapturePolicy } from '../visual/policy';
+
 export interface HarConfig {
   bodyBytes: number;
   topN: number;
@@ -24,6 +26,7 @@ export interface RunnerConfig {
   flakeReruns: number;
   harConfig: HarConfig;
   consoleConfig: ConsoleConfig;
+  capturePolicy: CapturePolicy;
 }
 
 function parseSingleSelector(
@@ -111,5 +114,6 @@ export function loadConfig(env: NodeJS.ProcessEnv, cwd: string = process.cwd()):
     flakeReruns,
     harConfig,
     consoleConfig,
+    capturePolicy: parseCapturePolicy(env.QA_RUN_CAPTURE_POLICY),
   };
 }

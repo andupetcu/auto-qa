@@ -2,22 +2,39 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import Artifact, Project, TestResult, TestRun
 from app.deps import get_session, get_settings, require_auth
 from app.ids import new_id
 from app.problems import ProblemException
+from app.services.artifact_quota import ArtifactQuotaTracker, require_evidence_disk_capacity
 from app.services.clustering import cluster_run
 from app.services.events import emit_webhook
+from app.services.evidence import (
+    evidence_policy,
+    prepare_artifact,
+    redact_string,
+    redact_value,
+    validate_visual_artifact_set,
+)
 from app.settings import Settings
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
 
 class ArtifactIngest(BaseModel):
-    type: str
+    type: Literal[
+        "trace",
+        "screenshot",
+        "screenshot_frame",
+        "contact_sheet",
+        "visual_manifest",
+        "video",
+        "har",
+        "console",
+    ]
     storage_key: str
     bytes: int | None = None
 
@@ -29,18 +46,18 @@ class ResultIngest(BaseModel):
     role: str | None = None
     browser: str | None = None
     viewport: str | None = None
-    status: str
+    status: Literal["passed", "failed", "skipped"]
     duration_ms: int | None = None
     flaky: bool = False
     reruns_attempted: int = 0
     reruns_failed: int = 0
     failed_action: dict | None = None
     shell_rendered: bool | None = None
-    console_summary: list = []
-    network_summary: list = []
+    console_summary: list = Field(default_factory=list)
+    network_summary: list = Field(default_factory=list)
     dom_excerpt: str | None = None
     signature_input: dict | None = None
-    artifacts: list[ArtifactIngest] = []
+    artifacts: list[ArtifactIngest] = Field(default_factory=list)
 
 
 class FinalizeBody(BaseModel):
@@ -79,20 +96,45 @@ def ingest_results(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ):
-    _get_run_or_404(session, run_id)
+    run = _get_run_or_404(session, run_id)
+    if run.status in TERMINAL_STATUSES:
+        raise ProblemException(
+            409, "Run is terminal", f"Cannot ingest results for {run.status} run"
+        )
 
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(days=settings.retention_full_days)
+    policy = evidence_policy(settings)
+    quota = ArtifactQuotaTracker.for_run(session, settings, run)
+    if any(item.artifacts for item in results):
+        require_evidence_disk_capacity(settings)
 
     for item in results:
         result_id = new_id("res")
+        prepared_artifacts: list[tuple[ArtifactIngest, int]] = []
+        for artifact in item.artifacts:
+            _, actual_bytes = prepare_artifact(
+                settings,
+                run_id,
+                artifact.type,
+                artifact.storage_key,
+                policy,
+                result_id=result_id,
+            )
+            prepared_artifacts.append((artifact, actual_bytes))
+
+        validate_visual_artifact_set(settings, prepared_artifacts)
+        quota.reserve_result(
+            len(prepared_artifacts),
+            sum(actual_bytes for _, actual_bytes in prepared_artifacts),
+        )
         session.add(
             TestResult(
                 id=result_id,
                 run_id=run_id,
-                test_name=item.test_name,
-                test_file=item.test_file,
-                route_path=item.route_path,
+                test_name=redact_string(item.test_name, policy),
+                test_file=redact_string(item.test_file, policy),
+                route_path=redact_string(item.route_path, policy) if item.route_path else None,
                 role=item.role,
                 browser=item.browser,
                 viewport=item.viewport,
@@ -101,23 +143,23 @@ def ingest_results(
                 flaky=item.flaky,
                 reruns_attempted=item.reruns_attempted,
                 reruns_failed=item.reruns_failed,
-                failed_action=item.failed_action,
+                failed_action=redact_value(item.failed_action, policy),
                 shell_rendered=item.shell_rendered,
-                console_summary=item.console_summary,
-                network_summary=item.network_summary,
-                dom_excerpt=item.dom_excerpt,
-                signature_input=item.signature_input,
+                console_summary=redact_value(item.console_summary, policy),
+                network_summary=redact_value(item.network_summary, policy),
+                dom_excerpt=redact_string(item.dom_excerpt, policy) if item.dom_excerpt else None,
+                signature_input=redact_value(item.signature_input, policy),
                 created_at=now,
             )
         )
-        for art in item.artifacts:
+        for artifact, actual_bytes in prepared_artifacts:
             session.add(
                 Artifact(
                     id=new_id("art"),
                     result_id=result_id,
-                    type=art.type,
-                    storage_key=art.storage_key,
-                    bytes=art.bytes,
+                    type=artifact.type,
+                    storage_key=artifact.storage_key,
+                    bytes=actual_bytes,
                     expires_at=expires_at,
                 )
             )
@@ -133,6 +175,8 @@ def mark_started(
     session: Session = Depends(get_session),
 ):
     run = _get_run_or_404(session, run_id)
+    if run.status in TERMINAL_STATUSES:
+        return {"status": run.status}
     run.status = "running"
     run.started_at = datetime.now(timezone.utc)
     session.commit()

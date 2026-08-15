@@ -1,4 +1,4 @@
-from conftest import create_run, finalize, ingest, result_payload
+from conftest import create_run, finalize, result_payload
 
 
 def test_progress_defaults_null(client):
@@ -47,15 +47,24 @@ def test_cancel_finished_run_is_409(client):
     assert r.headers["content-type"].startswith("application/problem+json")
 
 
-def test_finalize_is_noop_after_cancel(client):
-    # a worker killed mid-run must not resurrect a canceled run via a late finalize
+def test_late_worker_callbacks_are_rejected_after_cancel(client):
+    # A worker killed mid-run must not resurrect or append to a canceled run.
     rid = create_run(client)
     client.post(f"/api/v1/internal/runs/{rid}/started")
     client.post(f"/api/v1/runs/{rid}/cancel")
-    ingest(client, rid, [result_payload("passed")])
-    r = client.post(f"/api/v1/internal/runs/{rid}/finalize", json={"status": "completed"})
-    assert r.status_code == 200
+    started = client.post(f"/api/v1/internal/runs/{rid}/started")
+    ingestion = client.post(
+        f"/api/v1/internal/runs/{rid}/results", json=[result_payload("passed")]
+    )
+    finalized = client.post(
+        f"/api/v1/internal/runs/{rid}/finalize", json={"status": "completed"}
+    )
+    assert started.status_code == 200
+    assert started.json()["status"] == "canceled"
+    assert ingestion.status_code == 409
+    assert finalized.status_code == 200
     assert client.get(f"/api/v1/runs/{rid}").json()["status"] == "canceled"
+    assert client.get(f"/api/v1/runs/{rid}/results").json() == []
 
 
 def test_progress_ignored_after_terminal(client):

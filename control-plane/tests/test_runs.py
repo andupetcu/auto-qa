@@ -27,6 +27,117 @@ def test_run_defaults_and_overrides(client):
     assert run2["app_version"] == "v42"
 
 
+def test_run_rejects_unapproved_target_before_queueing(client):
+    """Run overrides outside the installation policy never create worker work."""
+    response = client.post(
+        "/api/v1/runs",
+        json={"routes": ["ALL"], "base_url": "https://attacker.example.invalid"},
+    )
+
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["title"] == "Target not allowed"
+    assert client.get("/api/v1/runs").json() == []
+
+
+def test_run_accepts_allowed_target_path(client):
+    """Origin policy permits paths on an approved target origin."""
+    run_id = create_run(client, base_url="https://app.example.test/staging")
+
+    run = client.get(f"/api/v1/runs/{run_id}").json()
+    assert run["base_url"] == "https://app.example.test/staging"
+
+
+def test_run_capture_policy_is_normalized_bounded_and_passed_to_worker(client, settings):
+    """Every queued run stores one immutable, worker-visible capture-policy snapshot."""
+    response = client.post(
+        "/api/v1/runs",
+        json={
+            "routes": ["ALL"],
+            "capture": {
+                "loadingSequence": {"maxFrames": 3},
+                "contactSheet": {"quality": 90},
+            },
+        },
+    )
+    assert response.status_code == 202
+    run = client.get(f"/api/v1/runs/{response.json()['run_id']}").json()
+    assert run["capture_config"] == {
+        "version": 1,
+        "finalScreenshot": {"enabled": True, "fullPage": True, "format": "png"},
+        "loadingSequence": {
+            "enabled": True,
+            "maxFrames": 3,
+            "milestones": ["navigation", "domcontentloaded", "asserted"],
+            "delaysMs": [250, 750, 1500],
+        },
+        "contactSheet": {"enabled": True, "format": "webp", "quality": 90},
+        "trace": "on",
+        "video": "retain-on-failure",
+        "har": "reduced",
+        "retainIntermediateFrames": False,
+        "maskSelectors": [
+            "input[type='password']",
+            "input[autocomplete='current-password']",
+            "[data-sensitive='true']",
+        ],
+    }
+
+    from app.db import Project, TestRun
+    from app.services.runner import build_spawn_env
+
+    with client.app.state.SessionLocal() as session:
+        row = session.get(TestRun, run["id"])
+        project = session.get(Project, row.project_id)
+        env = build_spawn_env(row, project, settings)
+    assert json.loads(env["QA_RUN_CAPTURE_POLICY"]) == run["capture_config"]
+
+
+def test_run_capture_policy_preserves_mandatory_masks_and_canonicalizes_custom_masks(client):
+    """Custom masks extend rather than replace mandatory password protections."""
+    response = client.post(
+        "/api/v1/runs",
+        json={
+            "routes": ["ALL"],
+            "capture": {
+                "maskSelectors": [
+                    "  [data-project-secret]  ",
+                    "[data-project-secret]",
+                    "input[type='password']",
+                ]
+            },
+        },
+    )
+    assert response.status_code == 202
+    run = client.get(f"/api/v1/runs/{response.json()['run_id']}").json()
+    assert run["capture_config"]["maskSelectors"] == [
+        "input[type='password']",
+        "input[autocomplete='current-password']",
+        "[data-sensitive='true']",
+        "[data-project-secret]",
+    ]
+
+
+def test_run_capture_policy_rejects_excessive_or_unknown_values(client):
+    """Invalid visual policy never creates queued worker work."""
+    excessive = client.post(
+        "/api/v1/runs",
+        json={
+            "routes": ["ALL"],
+            "capture": {"loadingSequence": {"maxFrames": 99}},
+        },
+    )
+    assert excessive.status_code == 400
+    assert excessive.json()["title"] == "Invalid capture policy"
+
+    unknown = client.post(
+        "/api/v1/runs",
+        json={"routes": ["ALL"], "capture": {"surprise": True}},
+    )
+    assert unknown.status_code == 400
+    assert unknown.json()["title"] == "Invalid capture policy"
+
+
 def test_idempotency_key_replay_returns_same_run(client):
     h = {"Idempotency-Key": "abc123"}
     r1 = client.post("/api/v1/runs", json={"routes": ["ALL"]}, headers=h)
@@ -41,11 +152,54 @@ def test_unknown_route_is_problem_json(client):
     assert "/does-not-exist" in r.json()["detail"]
 
 
+def test_run_creation_rejects_scalar_routes(client):
+    """The public API accepts only route arrays, including the ALL sentinel."""
+    response = client.post("/api/v1/runs", json={"routes": "ALL"})
+
+    assert response.status_code == 422
+
+
 def test_list_runs(client):
     create_run(client)
     r = client.get("/api/v1/runs")
     assert r.status_code == 200
     assert len(r.json()) >= 1
+
+
+def test_list_runs_filters_orders_and_paginates(client):
+    """Run list filters and cursor pagination are enforced by the public API."""
+    oldest_id = create_run(client)
+    finalize(client, oldest_id, status="completed")
+    newest_fai_id = create_run(client)
+
+    project = client.post(
+        "/api/v1/projects",
+        json={
+            "name": "studio",
+            "base_url_default": "https://studio.example.test",
+            "roles": [{"name": "user"}, {"name": "anon"}],
+            "routes": ["/"],
+        },
+    )
+    assert project.status_code == 201
+    newest_id = create_run(client, project="studio", routes=["/"])
+
+    all_runs = client.get("/api/v1/runs", params={"limit": 2}).json()
+    assert [run["id"] for run in all_runs] == [newest_id, newest_fai_id]
+
+    page_two = client.get(
+        "/api/v1/runs", params={"limit": 2, "before": newest_fai_id}
+    ).json()
+    assert [run["id"] for run in page_two] == [oldest_id]
+
+    completed = client.get("/api/v1/runs", params={"status": "completed"}).json()
+    assert [run["id"] for run in completed] == [oldest_id]
+
+    studio = client.get("/api/v1/runs", params={"project": "studio"}).json()
+    assert [run["id"] for run in studio] == [newest_id]
+
+    manual = client.get("/api/v1/runs", params={"trigger": "manual"}).json()
+    assert {run["id"] for run in manual} >= {oldest_id, newest_fai_id, newest_id}
 
 
 def test_get_missing_run_404_problem(client):

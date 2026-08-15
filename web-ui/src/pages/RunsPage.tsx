@@ -1,3 +1,5 @@
+/** @fileoverview Paginated run history with live status refresh. */
+
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -80,7 +82,7 @@ export function RunsPage() {
   const navigate = useNavigate();
 
   const { data: runs, isLoading } = useQuery({
-    queryKey: ['runs'],
+    queryKey: ['runs', 'history', { limit: 50 }],
     queryFn: () => endpoints.runs({ limit: 50 }),
     refetchInterval: (query) => {
       const list = query.state.data as Run[] | undefined;
@@ -142,7 +144,7 @@ export function RunsPage() {
         columnId: 'started',
         renderHeaderCell: () => 'Started',
         renderCell: (r) => (
-          <span className={styles.muted}>{new Date(r.started_at).toLocaleString()}</span>
+          <span className={styles.muted}>{r.started_at ? new Date(r.started_at).toLocaleString() : '—'}</span>
         ),
       }),
       createTableColumn<Run>({

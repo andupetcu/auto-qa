@@ -1,5 +1,6 @@
-// Types mirroring the Auto QA control-plane API contract (/api/v1/*).
-// Kept hand-written and in lockstep with docs/plans/web-ui-build.md + doc 02.
+/** @fileoverview TypeScript contracts mirroring the Auto QA control-plane API. */
+
+// Kept hand-written and in lockstep with the deployed /api/v1 contract.
 
 export type RunStatus =
   | 'queued'
@@ -22,6 +23,9 @@ export type ArtifactType =
   | 'frames'
   | 'sheet'
   | 'screenshot'
+  | 'screenshot_frame'
+  | 'contact_sheet'
+  | 'visual_manifest'
   | 'console';
 
 export interface ProblemDetails {
@@ -125,7 +129,7 @@ export interface Run {
   base_url: string;
   app_version: string | null;
   status: RunStatus;
-  started_at: string;
+  started_at: string | null;
   ended_at: string | null;
   totals: RunTotals | null;
   parent_run_id: string | null;
@@ -133,7 +137,7 @@ export interface Run {
 }
 
 export interface RunCreateInput {
-  routes: string[] | 'ALL';
+  routes: string[];
   project?: string;
   roles?: string[];
   browsers?: string[];
@@ -197,11 +201,43 @@ export interface NetworkFailure {
   resp_snippet: string;
 }
 
+export interface ArtifactMetadata {
+  redaction_version: string;
+  state: 'redacted' | 'unknown';
+  raw_variant_retrievable?: boolean;
+}
+
 export interface SignedArtifact {
   type: ArtifactType;
   url: string;
   bytes: number;
   expires_at: string;
+  metadata: ArtifactMetadata;
+}
+
+export interface VisualFileEvidence {
+  filename: string;
+  bytes: number;
+  sha256: string;
+  width: number;
+  height: number;
+  artifact: SignedArtifact | null;
+}
+
+export interface VisualFrameEvidence extends VisualFileEvidence {
+  index: number;
+  milestone: 'navigation' | 'domcontentloaded' | 'delay' | 'asserted';
+  capturedAt: string;
+}
+
+export interface VisualEvidence {
+  status: 'captured' | 'not_captured';
+  manifest: Record<string, unknown> | null;
+  manifestArtifact?: SignedArtifact;
+  frames: VisualFrameEvidence[];
+  finalScreenshot: VisualFileEvidence | null;
+  contactSheet: VisualFileEvidence | null;
+  warnings: string[];
 }
 
 export interface FailureBundleTest {
@@ -243,4 +279,5 @@ export interface FullHarArtifact {
   url: string;
   bytes: number;
   expires_at: string;
+  metadata: ArtifactMetadata;
 }

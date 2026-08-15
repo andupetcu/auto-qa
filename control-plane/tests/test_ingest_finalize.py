@@ -1,3 +1,8 @@
+from pathlib import Path
+import zipfile
+
+import pytest
+
 from conftest import create_run, finalize, ingest, result_payload, sig_input
 
 
@@ -37,19 +42,40 @@ def test_started_marks_running(client):
     assert run["started_at"] is not None
 
 
+@pytest.mark.parametrize("terminal_status", ["completed", "failed", "auth_expired"])
+def test_late_started_and_ingest_cannot_resurrect_terminal_run(client, terminal_status):
+    rid = create_run(client)
+    finalize(client, rid, status=terminal_status)
+    started = client.post(f"/api/v1/internal/runs/{rid}/started")
+    ingestion = client.post(
+        f"/api/v1/internal/runs/{rid}/results",
+        json=[result_payload("passed")],
+    )
+    assert started.status_code == 200
+    assert started.json()["status"] == terminal_status
+    assert ingestion.status_code == 409
+    assert client.get(f"/api/v1/runs/{rid}").json()["status"] == terminal_status
+    assert client.get(f"/api/v1/runs/{rid}/results").json() == []
+
+
 def test_finalize_auth_expired(client):
     rid = create_run(client)
     finalize(client, rid, status="auth_expired", detail="session stale")
     assert client.get(f"/api/v1/runs/{rid}").json()["status"] == "auth_expired"
 
 
-def test_results_listing_and_artifact_rows(client):
+def test_results_listing_and_artifact_rows(client, settings):
     rid = create_run(client)
+    storage_key = f"runs/{rid}/t1/trace.zip"
+    artifact_path = Path(settings.artifacts_dir) / storage_key
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(artifact_path, "w") as archive:
+        archive.writestr("trace.json", '{"event":"safe"}')
     ingest(client, rid, [
         result_payload("failed", signature_input=sig_input(),
                        artifacts=[{"type": "trace",
-                                   "storage_key": f"runs/{rid}/t1/trace.zip",
-                                   "bytes": 1234}]),
+                                   "storage_key": storage_key,
+                                   "bytes": artifact_path.stat().st_size}]),
     ])
     finalize(client, rid)
     results = client.get(f"/api/v1/runs/{rid}/results").json()
