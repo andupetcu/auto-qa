@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from app.problems import ProblemException
+from app.services.route_metadata import pathname_only
 from app.settings import Settings
 
 REDACTION_VERSION = "evidence-redaction-v1"
@@ -245,11 +246,32 @@ def prepare_artifact(
             raise ProblemException(
                 400, "Invalid artifact", "Visual manifest is not valid JSON"
             ) from exc
-        if not isinstance(payload, dict) or payload.get("schemaVersion") != 1:
+        schema_version = payload.get("schemaVersion") if isinstance(payload, dict) else None
+        if schema_version not in {1, 2}:
             raise ProblemException(
                 400, "Invalid artifact", "Unsupported visual manifest schema"
             )
+        if schema_version == 2:
+            readiness = payload.get("readiness")
+            evidence_state = payload.get("evidenceState")
+            if evidence_state not in {
+                "captured_settled",
+                "captured_unsettled",
+                "capture_failed",
+                "not_applicable",
+            } or (
+                readiness is not None
+                and (
+                    not isinstance(readiness, dict)
+                    or readiness.get("status")
+                    not in {"passed", "failed", "timed_out", "disabled"}
+                )
+            ):
+                raise ProblemException(
+                    400, "Invalid artifact", "Invalid visual readiness manifest"
+                )
         payload["resultId"] = result_id
+        payload["route"] = pathname_only(payload.get("route"))
         payload = redact_value(payload, policy)
         target.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")))
     elif target.suffix.lower() in {".json", ".jsonl", ".txt", ".log", ".html"}:

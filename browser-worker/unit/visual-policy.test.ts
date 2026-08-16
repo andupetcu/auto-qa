@@ -70,6 +70,37 @@ describe('capture policy boundary', () => {
     if (accepted) expect(action).not.toThrow(); else expect(action).toThrow(/quality/);
   });
 
+  test('normalizes bounded readiness and request rules', () => {
+    const policy = parseCapturePolicy(raw({
+      readiness: {
+        ...structuredClone(DEFAULT_CAPTURE_POLICY.readiness),
+        timeoutMs: 12_000,
+        readySelectors: ['main'],
+        loadingSelectors: ['[aria-busy="true"]'],
+        criticalRequests: [{ urlGlob: '*/api/*', methods: ['GET'], resourceTypes: ['fetch'] }],
+        ignoredRequests: [{ urlGlob: '*/events', methods: [], resourceTypes: ['fetch'] }],
+      },
+    }));
+    expect(policy.readiness.timeoutMs).toBe(12_000);
+    expect(policy.readiness.criticalRequests[0]).toEqual({
+      urlGlob: '*/api/*', methods: ['GET'], resourceTypes: ['fetch'],
+    });
+  });
+
+  test('rejects unsafe readiness bounds, duplicate selectors, and malformed methods', () => {
+    const timeout = structuredClone(DEFAULT_CAPTURE_POLICY);
+    timeout.readiness.timeoutMs = 999;
+    expect(() => parseCapturePolicy(JSON.stringify(timeout))).toThrow(/timeoutMs/);
+    const duplicate = structuredClone(DEFAULT_CAPTURE_POLICY);
+    duplicate.readiness.loadingSelectors = ['.loading', '.loading'];
+    expect(() => parseCapturePolicy(JSON.stringify(duplicate))).toThrow(/unique/);
+    const malformed = structuredClone(DEFAULT_CAPTURE_POLICY);
+    malformed.readiness.criticalRequests = [{
+      urlGlob: '*', methods: ['get'], resourceTypes: ['fetch'],
+    }];
+    expect(() => parseCapturePolicy(JSON.stringify(malformed))).toThrow(/uppercase/);
+  });
+
   test('rejects malformed JSON, unsupported versions, and wrong types', () => {
     expect(() => parseCapturePolicy('{')).toThrow(/valid JSON/);
     expect(() => parseCapturePolicy(raw({ version: 2 }))).toThrow(/unsupported/);

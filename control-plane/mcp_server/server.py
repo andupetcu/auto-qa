@@ -246,6 +246,27 @@ def build_mcp(app, settings) -> QAMCPServer:
     handlers["get_har"] = get_har
 
     @inner.tool()
+    async def get_network_summary(result_id: str) -> dict:
+        """Return bounded pending, failed, HTTP-error, and slow request diagnostics."""
+        return await _get(f"/api/v1/results/{result_id}/network-summary")
+
+    handlers["get_network_summary"] = get_network_summary
+
+    @inner.tool()
+    async def get_runtime_summary(result_id: str) -> dict:
+        """Return console/page-error collector health and bounded runtime events."""
+        return await _get(f"/api/v1/results/{result_id}/runtime-summary")
+
+    handlers["get_runtime_summary"] = get_runtime_summary
+
+    @inner.tool()
+    async def get_readiness_summary(result_id: str) -> dict:
+        """Return immutable visual/network readiness and evidence-state metadata."""
+        return await _get(f"/api/v1/results/{result_id}/readiness-summary")
+
+    handlers["get_readiness_summary"] = get_readiness_summary
+
+    @inner.tool()
     async def get_artifacts(result_id: str, types: str | None = None) -> dict:
         data = await _get(f"/api/v1/results/{result_id}/artifacts", {"types": types})
         return {"artifacts": data}

@@ -34,8 +34,8 @@ import {
   type ResultIngest,
 } from './lib/ingest';
 import { findAuthExpiredFile } from './lib/authExpired';
-import { parseReport, type ParsedResult } from './reportParser';
-import { filterHar } from './postprocess/harFilter';
+import { isApplicableResult, parseReport, resolveRoutePath, type ParsedResult } from './reportParser';
+import { analyzeHar } from './postprocess/harFilter';
 import { filterConsole, type ConsoleEntry } from './postprocess/consoleFilter';
 import { resolveFrame, type Fetcher } from './postprocess/sourcemap';
 import { signatureInput } from './postprocess/normalize';
@@ -167,6 +167,20 @@ async function processResult(
     artifactPaths.set(type, destPath);
   }
 
+  let manifestRoute: unknown = null;
+  if (!r.route_path) {
+    const manifestPath = artifactPaths.get('visual_manifest');
+    if (manifestPath) {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        manifestRoute = manifest.route;
+      } catch {
+        // Invalid manifests are rejected by control-plane ingestion; route recovery is best effort.
+      }
+    }
+  }
+  const resolvedRoutePath = resolveRoutePath(r.route_path, manifestRoute);
+
   const flake = flakeInfo.get(attachmentKey(r.role, r.test_name)) ?? {
     reruns_attempted: 0,
     reruns_failed: 0,
@@ -177,26 +191,26 @@ async function processResult(
   const failed_action = failed ? buildFailedAction(r.error_message) : null;
 
   let console_summary: ConsoleEntry[] = [];
-  let network_summary: ReturnType<typeof filterHar> = [];
+  let network_summary: ReturnType<typeof analyzeHar> = [];
   let signature_input: Record<string, unknown> | null = null;
 
+  const harPath = artifactPaths.get('har');
+  if (harPath) {
+    const har = JSON.parse(fs.readFileSync(harPath, 'utf8'));
+    network_summary = analyzeHar(har, cfg.harConfig);
+  }
+
+  const consolePath = artifactPaths.get('console');
+  if (consolePath) {
+    const lines = fs
+      .readFileSync(consolePath, 'utf8')
+      .split('\n')
+      .filter((line) => line.trim().length > 0)
+      .map((line) => JSON.parse(line));
+    console_summary = filterConsole(lines, cfg.consoleConfig);
+  }
+
   if (failed && !flake.flaky) {
-    const harPath = artifactPaths.get('har');
-    if (harPath) {
-      const har = JSON.parse(fs.readFileSync(harPath, 'utf8'));
-      network_summary = filterHar(har, cfg.harConfig);
-    }
-
-    const consolePath = artifactPaths.get('console');
-    if (consolePath) {
-      const lines = fs
-        .readFileSync(consolePath, 'utf8')
-        .split('\n')
-        .filter((l) => l.trim().length > 0)
-        .map((l) => JSON.parse(l));
-      console_summary = filterConsole(lines, cfg.consoleConfig);
-    }
-
     const mutableEntries = console_summary as unknown as ResolvableConsoleEntry[];
     const firstError = pickFirstErrorEntry(mutableEntries);
     let resolved: string | null = null;
@@ -211,7 +225,7 @@ async function processResult(
     signature_input = signatureInput({
       error: resolveSignatureError(r.error_message, firstError?.text),
       topFrame: resolveTopFrame(resolved, firstError?.raw_source),
-      route: r.route_path ?? '',
+      route: resolvedRoutePath ?? '',
       role: r.role,
     }) as unknown as Record<string, unknown>;
   }
@@ -219,7 +233,7 @@ async function processResult(
   return buildResultIngest({
     test_name: r.test_name,
     test_file: r.test_file,
-    route_path: r.route_path,
+    route_path: resolvedRoutePath,
     role: r.role,
     status: r.status,
     duration_ms: r.duration_ms,
@@ -302,7 +316,7 @@ async function runToCompletion(cfg: RunnerConfig): Promise<void> {
   }
 
   const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
-  const allResults: ParsedResult[] = parseReport(report);
+  const allResults: ParsedResult[] = parseReport(report).filter(isApplicableResult);
   const attachmentsMap = collectAttachments(report);
 
   // auth setup failing (e.g. a project's QA_CRED_* not populated) skips every dependent

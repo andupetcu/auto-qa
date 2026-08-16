@@ -1,8 +1,10 @@
+/** @fileoverview Unit contracts for immutable project, selector, matrix, and role filtering. */
 import { describe, expect, test } from 'vitest';
 import {
   resolveMatrix,
   resolveRoles,
   resolveSelectors,
+  roleProjectGrep,
   sessionStatePath,
 } from '../tests/projectConfig';
 
@@ -79,6 +81,21 @@ describe('parseListEnv', () => {
     expect(parseListEnv('[]')).toBeNull();   // empty list must NOT mean "exclude everything"
     expect(parseListEnv(undefined)).toBeNull();
     expect(parseListEnv('{nope')).toBeNull();
+  });
+});
+
+describe('roleProjectGrep', () => {
+  test('keeps non-matrix tests and only the applicable role matrix cases', () => {
+    const user = roleProjectGrep('user');
+    expect(user.test('user › smoke.spec.ts › loads dashboard')).toBe(true);
+    expect(user.test('user › matrix.spec.ts › matrix / as user -> render')).toBe(true);
+    expect(user.test('user › matrix.spec.ts › matrix / as anon -> redirect')).toBe(false);
+  });
+
+  test('escapes dynamic role names before building the project filter', () => {
+    const role = roleProjectGrep('studio.admin');
+    expect(role.test('studio.admin › matrix /x as studio.admin -> render')).toBe(true);
+    expect(role.test('studio.admin › matrix /x as studioXadmin -> render')).toBe(false);
   });
 });
 

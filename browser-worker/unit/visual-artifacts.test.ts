@@ -64,7 +64,9 @@ describe('visual evidence artifacts', () => {
       warnings: [],
     });
 
-    expect(manifest.schemaVersion).toBe(1);
+    expect(manifest.schemaVersion).toBe(2);
+    expect(manifest.evidenceState).toBe('captured_unsettled');
+    expect(manifest.readiness).toBeNull();
     expect(manifest.resultId).toBeNull();
     expect(manifest.frames.map((frame) => frame.index)).toEqual([0, 1]);
     expect(manifest.frames[0].sha256).not.toBe(manifest.frames[1].sha256);

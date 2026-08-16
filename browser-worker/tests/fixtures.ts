@@ -1,3 +1,4 @@
+/** @fileoverview Playwright fixtures for masked lifecycle capture and readiness verdicts. */
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -6,6 +7,7 @@ import { test as base, expect, type BrowserContext } from '@playwright/test';
 import { resultKey } from '../src/lib/slug';
 import { VisualCaptureSession } from '../src/visual/capture';
 import { parseCapturePolicy } from '../src/visual/policy';
+import { ReadinessMonitor } from '../src/visual/readiness';
 import { resolveRoles, sessionStatePath } from './projectConfig';
 
 interface ConsoleEntry {
@@ -100,6 +102,11 @@ export const test = base.extend<{ context: BrowserContext }>({
         contactSheetMaxBytes: Number(process.env.QA_CAPTURE_SHEET_MAX_BYTES ?? 4_194_304),
       },
     );
+    const monitor = new ReadinessMonitor(
+      page,
+      capturePolicy.readiness,
+      (milestone, state) => visual.captureFrame(milestone, new Date().toISOString(), state),
+    );
     const timers = new Set<NodeJS.Timeout>();
 
     if (capturePolicy.loadingSequence.milestones.includes('navigation')) {
@@ -122,10 +129,23 @@ export const test = base.extend<{ context: BrowserContext }>({
 
     const video = page.video();
     await use(page);
+
+    await visual.captureFrame('asserted');
+    const readiness = await monitor.assess();
+    monitor.stop();
     for (const timer of timers) clearTimeout(timer);
     timers.clear();
 
-    const output = await visual.finish();
+    if (!titleRoute) {
+      try {
+        const resolved = new URL(page.url());
+        visual.setRoute(`${resolved.pathname}${resolved.search}`);
+      } catch {
+        // Keep an empty route only when the browser never reached a valid URL.
+      }
+    }
+
+    const output = await visual.finish(new Date().toISOString(), readiness);
     if (output.finalScreenshot) {
       await testInfo.attach('screenshot', {
         path: output.finalScreenshot.path,
@@ -149,8 +169,10 @@ export const test = base.extend<{ context: BrowserContext }>({
     });
 
     await page.close();
+    const readinessFailed = !['passed', 'disabled'].includes(readiness.status);
     const retainVideo = capturePolicy.video === 'on' || (
-      capturePolicy.video === 'retain-on-failure' && testInfo.status !== testInfo.expectedStatus
+      capturePolicy.video === 'retain-on-failure'
+      && (testInfo.status !== testInfo.expectedStatus || readinessFailed)
     );
     if (video && retainVideo) {
       try {
@@ -161,6 +183,9 @@ export const test = base.extend<{ context: BrowserContext }>({
       } catch {
         // Video evidence is optional and must never change the test verdict.
       }
+    }
+    if (readinessFailed && testInfo.status === testInfo.expectedStatus) {
+      throw new Error(`Auto QA readiness ${readiness.status}: ${readiness.reasons.join('; ') || 'page did not settle'}`);
     }
   },
 });

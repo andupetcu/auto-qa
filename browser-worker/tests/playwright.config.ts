@@ -1,6 +1,7 @@
+/** @fileoverview Playwright projects scoped to applicable role-matrix cases only. */
 import { defineConfig } from '@playwright/test';
 import { parseCapturePolicy } from '../src/visual/policy';
-import { resolveRoles, sessionStatePath } from './projectConfig';
+import { resolveRoles, roleProjectGrep, sessionStatePath } from './projectConfig';
 
 const capturePolicy = parseCapturePolicy(process.env.QA_RUN_CAPTURE_POLICY);
 
@@ -36,9 +37,10 @@ export default defineConfig({
     { name: 'setup', testMatch: /auth\.setup\.ts/ },
     ...roles.filter(r => r !== 'anon').map(r => ({
       name: r,
+      grep: roleProjectGrep(r),
       dependencies: ['setup'],
       use: { storageState: sessionStatePath(process.env, r) },
     })),
-    ...(roles.includes('anon') ? [{ name: 'anon', use: {} }] : []),
+    ...(roles.includes('anon') ? [{ name: 'anon', grep: roleProjectGrep('anon'), use: {} }] : []),
   ],
 });

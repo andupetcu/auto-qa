@@ -1,3 +1,4 @@
+/** @fileoverview Runner configuration, subprocess, attachment, and retry unit contracts. */
 import { describe, expect, test } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -54,7 +55,7 @@ describe('config: loadConfig', () => {
     expect(cfg.flakeReruns).toBe(3);
     expect(cfg.harConfig).toEqual({ bodyBytes: 512, topN: 10, slowMs: 3000 });
     expect(cfg.consoleConfig).toEqual({ topN: 20 });
-    expect(cfg.capturePolicy.loadingSequence.maxFrames).toBe(6);
+    expect(cfg.capturePolicy.loadingSequence.maxFrames).toBe(12);
     expect(cfg.capturePolicy.finalScreenshot.enabled).toBe(true);
     expect(cfg.capturePolicy.maskSelectors).toContain("input[type='password']");
   });
@@ -319,21 +320,21 @@ describe('playwrightArgs: buildMatrixArgs / buildFlakeRerunArgs', () => {
     ]);
   });
 
-  test('flake rerun args include setup + role, grep pattern, and workers=1', () => {
+  test('flake rerun args reuse role state without replaying dependencies', () => {
     const args = buildFlakeRerunArgs('user', 'matrix / as user -> render');
     expect(args).toEqual([
       'test', '--config', 'tests/playwright.config.ts',
-      '--project', 'setup', '--project', 'user',
+      '--project', 'user', '--no-deps',
       '--grep', 'matrix / as user -> render$',
       '--workers', '1',
     ]);
   });
 
-  test('flake rerun args omit setup for anon role', () => {
+  test('flake rerun args isolate the anon role without dependencies', () => {
     const args = buildFlakeRerunArgs('anon', 'matrix / as anon -> redirect');
     expect(args).toEqual([
       'test', '--config', 'tests/playwright.config.ts',
-      '--project', 'anon',
+      '--project', 'anon', '--no-deps',
       '--grep', 'matrix / as anon -> redirect$',
       '--workers', '1',
     ]);

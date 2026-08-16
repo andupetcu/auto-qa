@@ -1,5 +1,6 @@
+/** @fileoverview HAR collector summary, pending-response, and privacy projection tests. */
 import { describe, expect, test } from 'vitest';
-import { filterHar } from '../src/postprocess/harFilter';
+import { analyzeHar, filterHar } from '../src/postprocess/harFilter';
 
 const entry = (over: any) => ({
   request: { method: 'GET', url: 'https://app.test/api/x' },
@@ -45,11 +46,22 @@ describe('filterHar', () => {
     expect(rows[0].resp_snippet.length).toBe(512);
   });
 
-  test('url_path preserves query string', () => {
+  test('url_path strips query strings from projected diagnostics', () => {
     const rows = filterHar(har([
       entry({ request: { method: 'GET', url: 'https://app.test/api/r?a=1&b=2' },
               response: { status: 500, content: { text: '' } } }),
     ]), cfg);
-    expect(rows[0].url_path).toBe('/api/r?a=1&b=2');
+    expect(rows[0].url_path).toBe('/api/r');
+  });
+
+  test('reports unfinished responses and explicit collector totals', () => {
+    const summary = analyzeHar(har([
+      entry({ response: { status: -1, content: { text: '' } }, time: -1 }),
+      entry({ response: { status: 200, content: { text: '' } }, time: 100 }),
+    ]), cfg);
+    expect(summary[0]).toMatchObject({
+      kind: 'summary', collector_status: 'completed', total_entries: 2, pending: 1,
+    });
+    expect(summary[1]).toMatchObject({ kind: 'pending', status: -1, timing_ms: -1 });
   });
 });

@@ -1,10 +1,13 @@
+/** @fileoverview Deterministic visual descriptors, contact sheets, and v2 manifests. */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import sharp from 'sharp';
 
-export type FrameMilestone = 'navigation' | 'domcontentloaded' | 'delay' | 'asserted';
+import type { FrameState, LifecycleMilestone, ReadinessSummary } from './readiness';
+
+export type FrameMilestone = LifecycleMilestone;
 
 export interface VisualFileDescriptor {
   filename: string;
@@ -18,6 +21,10 @@ export interface VisualFrameDescriptor extends VisualFileDescriptor {
   index: number;
   milestone: FrameMilestone;
   capturedAt: string;
+  elapsedMs: number;
+  readinessState: FrameState['readinessState'];
+  pendingCriticalRequests: number;
+  visibleLoadingSelectors: string[];
   path: string;
 }
 
@@ -43,6 +50,7 @@ export interface VisualManifestInput {
   frames: VisualFrameDescriptor[];
   finalScreenshot: VisualFrameDescriptor | null;
   contactSheet: VisualFileDescriptor | null;
+  readiness?: ReadinessSummary | null;
   warnings: string[];
 }
 
@@ -64,6 +72,12 @@ export async function describeFrameFile(
   index: number,
   milestone: FrameMilestone,
   capturedAt: string,
+  state: FrameState = {
+    elapsedMs: 0,
+    readinessState: 'observing',
+    pendingCriticalRequests: 0,
+    visibleLoadingSelectors: [],
+  },
 ): Promise<VisualFrameDescriptor> {
   const buffer = fs.readFileSync(filePath);
   const metadata = await sharp(buffer).metadata();
@@ -72,6 +86,10 @@ export async function describeFrameFile(
     index,
     milestone,
     capturedAt,
+    elapsedMs: state.elapsedMs,
+    readinessState: state.readinessState,
+    pendingCriticalRequests: state.pendingCriticalRequests,
+    visibleLoadingSelectors: [...state.visibleLoadingSelectors],
     path: filePath,
     filename: path.basename(filePath),
     bytes: buffer.length,
@@ -142,8 +160,8 @@ export async function createContactSheet(
     const label = await labelBuffer(
       tileWidth,
       scaledLabelHeight,
-      `#${frame.index} ${frame.milestone} ${frame.capturedAt}`,
-      `${options.labels.route} | ${options.labels.role} | ${options.labels.browser} ${options.labels.viewport}`,
+      `#${frame.index} +${frame.elapsedMs}ms ${frame.milestone} ${frame.readinessState}`,
+      `${options.labels.route} | ${options.labels.role} | pending=${frame.pendingCriticalRequests} | ${options.labels.browser} ${options.labels.viewport}`,
     );
     composites.push({ input: label, left, top });
     composites.push({ input: image, left, top: top + scaledLabelHeight });
@@ -198,8 +216,11 @@ export function buildVisualManifest(input: VisualManifestInput) {
   const frames = [...input.frames]
     .sort((left, right) => left.index - right.index)
     .map(({ path: _path, ...frame }) => frame);
+  const evidenceState = input.readiness?.status === 'passed'
+    ? 'captured_settled'
+    : (frames.length > 0 || input.finalScreenshot ? 'captured_unsettled' : 'capture_failed');
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     resultId: null,
     resultKey: input.resultKey,
     route: input.route,
@@ -207,6 +228,8 @@ export function buildVisualManifest(input: VisualManifestInput) {
     browser: input.browser,
     viewport: input.viewport,
     capturePolicyVersion: input.policyVersion,
+    evidenceState,
+    readiness: input.readiness ?? null,
     frames,
     finalScreenshot: manifestFile(input.finalScreenshot),
     contactSheet: manifestFile(input.contactSheet),

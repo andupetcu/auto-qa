@@ -1,3 +1,4 @@
+/** @fileoverview Pure, application-agnostic Playwright project and role-matrix resolution. */
 // Pure project-config resolution for the Playwright test layer (v0.2 "projects").
 // No side effects, no filesystem/env mutation — every function takes an env record (or
 // equivalent) as input and returns a plain value. Consumed by playwright.config.ts,
@@ -108,6 +109,11 @@ export function parseListEnv(value: string | undefined): string[] | null {
   } catch {
     return null;
   }
+}
+
+export function roleProjectGrep(role: string): RegExp {
+  const escapedRole = role.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^(?!.* as [^ ]+ -> )| as ${escapedRole} -> `);
 }
 
 export function sessionStatePath(env: Env, role: string): string {

@@ -44,6 +44,7 @@ describe('VisualCaptureSession', () => {
       contactSheetMaxPixels: 1_000_000,
       contactSheetMaxBytes: 300_000,
     });
+    capture.setRoute('/test?token=secret#section');
     await capture.captureFrame('navigation', '2026-08-15T08:00:00.000Z');
     await capture.captureFrame('domcontentloaded', '2026-08-15T08:00:00.100Z');
     await capture.captureFrame('delay', '2026-08-15T08:00:00.200Z');
@@ -55,10 +56,72 @@ describe('VisualCaptureSession', () => {
     expect(output.finalScreenshot).not.toBeNull();
     expect(output.contactSheet).not.toBeNull();
     expect(fs.existsSync(output.manifestPath)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(output.manifestPath, 'utf8')).route).toBe('/test');
     for (const call of screenshotCalls) {
       expect(call.maskColor).toBe('#000000');
       expect(call.mask).toHaveLength(2);
     }
+  });
+
+  test('reserves bounded matrix evidence for the terminal readiness state', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'auto-qa-terminal-'));
+    const colors = ['#c00000', '#c0c000', '#00c000', '#00c000'];
+    const page = {
+      locator: () => ({ count: async () => 0 }),
+      screenshot: async (options: Record<string, unknown>) => {
+        const content = await sharp({
+          create: { width: 120, height: 80, channels: 3, background: colors.shift() ?? '#00c000' },
+        }).png().toBuffer();
+        fs.writeFileSync(options.path as string, content);
+        return content;
+      },
+    };
+    const policy = structuredClone(DEFAULT_CAPTURE_POLICY);
+    policy.loadingSequence.maxFrames = 2;
+    const capture = new VisualCaptureSession(page as never, policy, dir, {
+      resultKey: 'terminal', route: '/', role: 'user', browser: 'chromium',
+      viewport: '120x80', contactSheetMaxPixels: 1_000_000, contactSheetMaxBytes: 300_000,
+    });
+    await capture.captureFrame('navigation');
+    await capture.captureFrame('delay');
+    await capture.captureFrame('settled', new Date().toISOString(), {
+      elapsedMs: 1200,
+      readinessState: 'settled',
+      pendingCriticalRequests: 0,
+      visibleLoadingSelectors: [],
+    });
+    const output = await capture.finish();
+    expect(output.frames).toHaveLength(2);
+    expect(output.frames.map((frame) => frame.milestone)).toEqual(['navigation', 'settled']);
+    expect(output.frames[1].readinessState).toBe('settled');
+  });
+
+  test('retries one transient Chromium capture failure before degrading evidence', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'auto-qa-retry-'));
+    const content = await sharp({
+      create: { width: 120, height: 80, channels: 3, background: '#00c000' },
+    }).png().toBuffer();
+    let attempts = 0;
+    const page = {
+      locator: () => ({ count: async () => 0 }),
+      screenshot: async (options: Record<string, unknown>) => {
+        attempts += 1;
+        if (attempts === 1) throw new Error('Protocol error: Unable to capture screenshot');
+        fs.writeFileSync(options.path as string, content);
+        return content;
+      },
+    };
+    const policy = structuredClone(DEFAULT_CAPTURE_POLICY);
+    policy.loadingSequence.enabled = false;
+    policy.contactSheet.enabled = false;
+    const capture = new VisualCaptureSession(page as never, policy, dir, {
+      resultKey: 'retry', route: '/', role: 'user', browser: 'chromium',
+      viewport: '120x80', contactSheetMaxPixels: 1_000_000, contactSheetMaxBytes: 300_000,
+    });
+    const output = await capture.finish();
+    expect(attempts).toBe(2);
+    expect(output.finalScreenshot).not.toBeNull();
+    expect(output.warnings).toEqual([]);
   });
 
   test('renders configured sensitive selectors as black pixels before writing evidence', async () => {
@@ -83,7 +146,7 @@ describe('VisualCaptureSession', () => {
         contactSheetMaxBytes: 300_000,
       });
       const output = await capture.finish();
-      expect(output.finalScreenshot).not.toBeNull();
+      expect(output.finalScreenshot, output.warnings.join(' | ')).not.toBeNull();
       const { data, info } = await sharp(output.finalScreenshot!.path)
         .removeAlpha()
         .raw()
@@ -113,7 +176,7 @@ describe('VisualCaptureSession', () => {
         viewport: '240x100', contactSheetMaxPixels: 1_000_000, contactSheetMaxBytes: 300_000,
       });
       const output = await capture.finish();
-      expect(output.finalScreenshot).not.toBeNull();
+      expect(output.finalScreenshot, output.warnings.join(' | ')).not.toBeNull();
       expect(output.warnings.join(' ')).toMatch(/mask selector/);
       const { data, info } = await sharp(output.finalScreenshot!.path)
         .removeAlpha().raw().toBuffer({ resolveWithObject: true });

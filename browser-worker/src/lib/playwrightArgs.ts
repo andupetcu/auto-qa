@@ -1,3 +1,4 @@
+/** @fileoverview Deterministic Playwright matrix and isolated flake-rerun arguments. */
 import { titleGrepPattern } from './flake';
 
 const CONFIG_ARGS = ['test', '--config', 'tests/playwright.config.ts'];
@@ -12,12 +13,10 @@ export function buildMatrixArgs(roles: string[]): string[] {
   return args;
 }
 
-// Isolated single-test flake rerun: one role only, workers=1, no parallelism.
+// Isolated flake reruns reuse the authenticated storage state created by the matrix run.
+// `--no-deps` prevents replaying expensive authentication before every attempt.
 export function buildFlakeRerunArgs(role: string, testTitle: string): string[] {
-  const projects = role === 'anon' ? [role] : ['setup', role];
-
-  const args = [...CONFIG_ARGS];
-  for (const p of projects) args.push('--project', p);
+  const args = [...CONFIG_ARGS, '--project', role, '--no-deps'];
   args.push('--grep', titleGrepPattern(testTitle), '--workers', '1');
   return args;
 }

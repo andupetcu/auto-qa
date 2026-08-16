@@ -69,7 +69,7 @@ def test_run_capture_policy_is_normalized_bounded_and_passed_to_worker(client, s
             "enabled": True,
             "maxFrames": 3,
             "milestones": ["navigation", "domcontentloaded", "asserted"],
-            "delaysMs": [250, 750, 1500],
+            "delaysMs": [250, 750, 1500, 3000, 6000, 10000],
         },
         "contactSheet": {"enabled": True, "format": "webp", "quality": 90},
         "trace": "on",
@@ -81,6 +81,24 @@ def test_run_capture_policy_is_normalized_bounded_and_passed_to_worker(client, s
             "input[autocomplete='current-password']",
             "[data-sensitive='true']",
         ],
+        "readiness": {
+            "version": 1,
+            "enabled": True,
+            "timeoutMs": 20000,
+            "pollIntervalMs": 250,
+            "captureIntervalMs": 1000,
+            "stabilityWindowMs": 1000,
+            "visualDiffRatio": 0.005,
+            "readySelectors": [],
+            "loadingSelectors": [],
+            "criticalRequests": [
+                {"urlGlob": "*", "methods": [], "resourceTypes": ["fetch", "xhr"]}
+            ],
+            "ignoredRequests": [],
+            "failOnPageError": True,
+            "failOnConsoleError": True,
+            "failOnCriticalRequest": True,
+        },
     }
 
     from app.db import Project, TestRun
@@ -91,6 +109,31 @@ def test_run_capture_policy_is_normalized_bounded_and_passed_to_worker(client, s
         project = session.get(Project, row.project_id)
         env = build_spawn_env(row, project, settings)
     assert json.loads(env["QA_RUN_CAPTURE_POLICY"]) == run["capture_config"]
+
+
+def test_project_readiness_defaults_are_snapshotted_and_run_override_wins(client):
+    readiness = {
+        "timeoutMs": 12000,
+        "loadingSelectors": ["[aria-busy='true']"],
+        "criticalRequests": [
+            {"urlGlob": "*/api/*", "methods": ["GET"], "resourceTypes": ["fetch"]}
+        ],
+    }
+    patched = client.patch("/api/v1/projects/fai", json={"selectors": {"readiness": readiness}})
+    assert patched.status_code == 200
+
+    inherited = client.post("/api/v1/runs", json={"routes": ["ALL"]})
+    inherited_run = client.get(f"/api/v1/runs/{inherited.json()['run_id']}").json()
+    assert inherited_run["capture_config"]["readiness"]["timeoutMs"] == 12000
+    assert inherited_run["capture_config"]["readiness"]["loadingSelectors"] == ["[aria-busy='true']"]
+
+    overridden = client.post(
+        "/api/v1/runs",
+        json={"routes": ["ALL"], "capture": {"readiness": {"timeoutMs": 3000}}},
+    )
+    overridden_run = client.get(f"/api/v1/runs/{overridden.json()['run_id']}").json()
+    assert overridden_run["capture_config"]["readiness"]["timeoutMs"] == 3000
+    assert overridden_run["capture_config"]["readiness"]["loadingSelectors"] == []
 
 
 def test_run_capture_policy_preserves_mandatory_masks_and_canonicalizes_custom_masks(client):

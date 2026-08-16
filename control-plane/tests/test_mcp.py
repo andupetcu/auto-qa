@@ -8,7 +8,8 @@ from conftest import create_run, ingest, result_payload
 EXPECTED_TOOLS = {
     "capabilities", "list_routes", "run_suite", "get_run_status", "get_run_results",
     "cancel_run",
-    "get_failure_bundles", "get_console_logs", "get_har", "get_artifacts",
+    "get_failure_bundles", "get_console_logs", "get_har", "get_network_summary",
+    "get_runtime_summary", "get_readiness_summary", "get_artifacts",
     "get_visual_evidence", "rerun",
     "list_projects", "create_project", "update_project",
     "list_schedules", "get_schedule", "create_schedule", "update_schedule",
@@ -174,6 +175,44 @@ async def test_get_failure_bundles_empty_run(mcp):
     bundles = await mcp.call_tool("get_failure_bundles", {"run_id": payload["run_id"]})
     bundles_payload = bundles[1] if isinstance(bundles, tuple) else bundles
     assert bundles_payload["bundles"] == []
+
+
+async def test_mcp_projects_structured_diagnostics(mcp, client):
+    run_id = create_run(client)
+    ingest(client, run_id, [result_payload(
+        "passed",
+        network_summary=[
+            {
+                "kind": "summary",
+                "collector_status": "completed",
+                "total_entries": 1,
+                "status_counts": {"-1": 1},
+                "pending": 1,
+                "request_failures": 0,
+                "http_4xx": 0,
+                "http_5xx": 0,
+                "slow": 0,
+            },
+            {
+                "kind": "pending", "method": "GET", "url_path": "/api/data",
+                "status": -1, "timing_ms": -1, "resp_snippet": "",
+            },
+        ],
+    )])
+    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()[0]["id"]
+
+    network = await mcp.call_tool("get_network_summary", {"result_id": result_id})
+    network = network[1] if isinstance(network, tuple) else network
+    assert network["collector_status"] == "completed"
+    assert network["summary"]["pending"] == 1
+
+    runtime = await mcp.call_tool("get_runtime_summary", {"result_id": result_id})
+    runtime = runtime[1] if isinstance(runtime, tuple) else runtime
+    assert runtime["collector_status"] == "not_captured"
+
+    readiness = await mcp.call_tool("get_readiness_summary", {"result_id": result_id})
+    readiness = readiness[1] if isinstance(readiness, tuple) else readiness
+    assert readiness["status"] == "not_captured"
 
 
 async def test_get_visual_evidence_exposes_explicit_not_captured_state(mcp, client):

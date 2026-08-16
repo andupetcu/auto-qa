@@ -1,3 +1,7 @@
+/** @fileoverview Deterministic Playwright report parsing and applicable-case filtering. */
+import { normalizeRoutePath } from './lib/routePath';
+export { normalizeRoutePath, resolveRoutePath } from './lib/routePath';
+
 export type TestStatus = 'passed' | 'failed' | 'timed_out' | 'skipped';
 
 export interface ParsedResult {
@@ -53,6 +57,12 @@ function collectSpecs(suites: RawSuite[] | undefined, out: RawSpec[]): void {
   }
 }
 
+export function isApplicableResult(result: ParsedResult): boolean {
+  if (result.status !== 'skipped') return true;
+  const roleMatch = result.test_name.match(/ as ([^ ]+) -> /);
+  return roleMatch === null || roleMatch[1] === result.role;
+}
+
 export function parseReport(report: { suites?: RawSuite[] }): ParsedResult[] {
   const specs: RawSpec[] = [];
   collectSpecs(report?.suites, specs);
@@ -61,7 +71,7 @@ export function parseReport(report: { suites?: RawSuite[] }): ParsedResult[] {
 
   for (const spec of specs) {
     const routeMatch = spec.title.match(MATRIX_TITLE_RE);
-    const route_path = routeMatch ? routeMatch[1] : null;
+    const route_path = normalizeRoutePath(routeMatch?.[1]);
 
     for (const test of spec.tests ?? []) {
       // Playwright emits results: [] for tests that never executed — report as skipped

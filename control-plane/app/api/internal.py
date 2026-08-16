@@ -12,6 +12,7 @@ from app.problems import ProblemException
 from app.services.artifact_quota import ArtifactQuotaTracker, require_evidence_disk_capacity
 from app.services.clustering import cluster_run
 from app.services.events import emit_webhook
+from app.services.route_metadata import pathname_only
 from app.services.evidence import (
     evidence_policy,
     prepare_artifact,
@@ -134,7 +135,7 @@ def ingest_results(
                 run_id=run_id,
                 test_name=redact_string(item.test_name, policy),
                 test_file=redact_string(item.test_file, policy),
-                route_path=redact_string(item.route_path, policy) if item.route_path else None,
+                route_path=pathname_only(item.route_path),
                 role=item.role,
                 browser=item.browser,
                 viewport=item.viewport,

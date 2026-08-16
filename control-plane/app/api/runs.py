@@ -111,7 +111,15 @@ def _create_run_row_unlocked(
     allowed_origins = settings.target_allowed_origin_list or [project.base_url_default]
     require_target_allowed(target_url, allowed_origins)
 
-    capture_config = normalize_capture_policy(capture, settings)
+    project_readiness = (
+        project.selectors.get("readiness")
+        if isinstance(project.selectors, dict)
+        and isinstance(project.selectors.get("readiness"), dict)
+        else None
+    )
+    capture_config = normalize_capture_policy(
+        capture, settings, project_readiness=project_readiness
+    )
     run_id = new_id("run")
     run = TestRun(
         id=run_id,

@@ -39,8 +39,8 @@ class Settings(BaseSettings):
     evidence_orphan_grace_seconds: int = 3600
     cleanup_enabled: bool = True
     cleanup_interval_seconds: int = 3600
-    capture_max_frames: int = 6
-    capture_max_delay_ms: int = 3000
+    capture_max_frames: int = 12
+    capture_max_delay_ms: int = 10000
     capture_max_mask_selectors: int = 20
     capture_max_contact_sheet_quality: int = 90
     capture_contact_sheet_max_pixels: int = 16777216

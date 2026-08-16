@@ -1,6 +1,8 @@
 """Failure clustering: signature hashing, severity rules, bundle assembly."""
 import hashlib
+import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -46,6 +48,40 @@ def _to_unix(dt: datetime | None) -> int | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return int(dt.timestamp())
+
+
+def _read_readiness_summary(settings: Settings, artifacts: list[Artifact]) -> dict | None:
+    """Read only bounded readiness fields from the already-sanitized manifest."""
+    manifest_artifact = next(
+        (artifact for artifact in artifacts if artifact.type == "visual_manifest"), None
+    )
+    if manifest_artifact is None:
+        return None
+    root = Path(settings.artifacts_dir).resolve()
+    path = (root / manifest_artifact.storage_key).resolve()
+    try:
+        path.relative_to(root)
+        manifest = json.loads(path.read_text())
+    except (ValueError, OSError, json.JSONDecodeError):
+        return {"status": "unavailable", "evidence_state": "capture_failed"}
+    readiness = manifest.get("readiness") if isinstance(manifest, dict) else None
+    if not isinstance(readiness, dict):
+        return {
+            "status": "unknown",
+            "evidence_state": manifest.get("evidenceState", "captured_unsettled"),
+        }
+    return {
+        "status": readiness.get("status", "unknown"),
+        "evidence_state": manifest.get("evidenceState", "captured_unsettled"),
+        "elapsed_ms": readiness.get("elapsedMs"),
+        "reasons": list(readiness.get("reasons") or [])[:20],
+        "pending_critical_requests": readiness.get("pendingCriticalRequests", 0),
+        "visible_loading_selectors": list(
+            readiness.get("visibleLoadingSelectors") or []
+        )[:20],
+        "network_failures": list(readiness.get("networkFailures") or [])[:20],
+        "runtime_errors": list(readiness.get("runtimeErrors") or [])[:20],
+    }
 
 
 def cluster_run(session: Session, run: TestRun, settings: Settings) -> int:
@@ -125,6 +161,7 @@ def cluster_run(session: Session, run: TestRun, settings: Settings) -> int:
             "failed_action": exemplar.failed_action,
             "console_errors": exemplar.console_summary,
             "network_failures": exemplar.network_summary,
+            "readiness": _read_readiness_summary(settings, exemplar_artifacts),
             "dom_excerpt": exemplar.dom_excerpt,
             "app": {"project": project_name, "base_url": run.base_url, "version": run.app_version},
             "artifacts": artifact_urls,

@@ -1,3 +1,8 @@
+"""Failure bundle clustering and enriched readiness evidence contracts."""
+
+import json
+from pathlib import Path
+
 from conftest import create_run, finalize, ingest, result_payload, sig_input
 
 
@@ -65,6 +70,45 @@ def test_failed_suite_test_with_null_route_clusters_cleanly(client):
     assert run["totals"]["failed"] == 1
     bundles = client.get(f"/api/v1/runs/{rid}/bundles").json()
     assert len(bundles) == 1
+
+
+def test_failure_bundle_includes_bounded_readiness_diagnostics(client, settings):
+    run_id = create_run(client)
+    path = Path(settings.artifacts_dir) / "runs" / run_id / "failed" / "manifest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "schemaVersion": 2,
+        "resultId": None,
+        "evidenceState": "captured_unsettled",
+        "readiness": {
+            "status": "timed_out",
+            "elapsedMs": 20000,
+            "reasons": ["1 critical request(s) still pending"],
+            "pendingCriticalRequests": 1,
+            "visibleLoadingSelectors": ["[aria-busy='true']"],
+            "networkFailures": [{"kind": "pending", "urlPath": "/api/data"}],
+            "runtimeErrors": [],
+        },
+        "frames": [],
+        "finalScreenshot": None,
+        "contactSheet": None,
+        "warnings": [],
+    }))
+    ingest(client, run_id, [result_payload(
+        "failed",
+        signature_input=sig_input(error="Auto QA readiness timed_out"),
+        artifacts=[{
+            "type": "visual_manifest",
+            "storage_key": str(path.relative_to(settings.artifacts_dir)),
+        }],
+    )])
+    finalize(client, run_id)
+
+    readiness = client.get(f"/api/v1/runs/{run_id}/bundles").json()[0]["readiness"]
+    assert readiness["status"] == "timed_out"
+    assert readiness["evidence_state"] == "captured_unsettled"
+    assert readiness["pending_critical_requests"] == 1
+    assert readiness["network_failures"][0]["urlPath"] == "/api/data"
 
 
 def test_severity_min_filter(client):
