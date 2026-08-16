@@ -49,6 +49,10 @@ export function buildResultIngest(
 ): ResultIngest {
   return {
     ...input,
+    // Playwright reports `timed_out`, while the control-plane result contract treats
+    // execution timeouts as failures. Preserve timeout detail in failed_action and
+    // readiness artifacts, but normalize the top-level verdict before ingestion.
+    status: input.status === 'timed_out' ? 'failed' : input.status,
     browser: execution.browser,
     viewport: execution.viewport,
   };

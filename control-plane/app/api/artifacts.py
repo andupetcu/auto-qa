@@ -9,9 +9,12 @@ from pathlib import Path
 from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 
-from app.deps import get_settings
+from sqlalchemy.orm import Session
+
+from app.db import Artifact
+from app.deps import get_session, get_settings
 from app.settings import Settings
-from app.services.evidence import artifact_metadata_path
+from app.services.evidence import REDACTION_VERSION, artifact_metadata_path
 from app.problems import ProblemException
 from app.services.signing import verify_signature
 
@@ -24,6 +27,7 @@ def serve_artifact(
     exp: int,
     sig: str,
     settings: Settings = Depends(get_settings),
+    session: Session = Depends(get_session),
 ):
     if not verify_signature(settings, storage_key, exp, sig):
         raise ProblemException(403, "Invalid artifact signature", "Signature is invalid")
@@ -45,11 +49,21 @@ def serve_artifact(
         raise ProblemException(
             403, "Artifact is not verified", "Only sanitized evidence may be downloaded"
         ) from exc
+    version = metadata.get("redaction_version") if isinstance(metadata, dict) else None
+    artifact_rows = session.query(Artifact).filter(Artifact.storage_key == storage_key).all()
+    legacy_artifact_type = (
+        str(artifact_rows[0].type).lower() if len(artifact_rows) == 1 else None
+    )
+    legacy_non_har = (
+        version == "evidence-redaction-v1"
+        and legacy_artifact_type is not None
+        and legacy_artifact_type != "har"
+    )
     if (
         not isinstance(metadata, dict)
         or metadata.get("state") != "redacted"
         or metadata.get("raw_variant_retrievable") is not False
-        or metadata.get("redaction_version") != "evidence-redaction-v1"
+        or (version != REDACTION_VERSION and not legacy_non_har)
     ):
         raise ProblemException(
             403, "Artifact is not verified", "Only sanitized evidence may be downloaded"

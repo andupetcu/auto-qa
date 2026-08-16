@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import shutil
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -77,8 +78,13 @@ def backfill_artifact_integrity(
         "integrity_mismatches": 0,
         "errors": 0,
     }
-    for artifact in session.query(Artifact).all():
+    artifacts = session.query(Artifact).all()
+    storage_key_counts = Counter(str(artifact.storage_key) for artifact in artifacts)
+    for artifact in artifacts:
         summary["database_artifacts"] += 1
+        if storage_key_counts[str(artifact.storage_key)] != 1:
+            summary["invalid_sidecars"] += 1
+            continue
         lexical_target = root / artifact.storage_key
         target = lexical_target.resolve()
         try:
@@ -101,6 +107,7 @@ def backfill_artifact_integrity(
         if not isinstance(metadata, dict) or any(
             (
                 metadata.get("redaction_version") != "evidence-redaction-v1",
+                str(artifact.type).lower() == "har",
                 metadata.get("state") != "redacted",
                 metadata.get("raw_variant_retrievable") is not False,
             )

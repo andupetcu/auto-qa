@@ -173,7 +173,7 @@ def test_ingest_rewrites_trace_zip_before_signed_download(client, settings):
     downloaded = client.get(descriptor["url"])
 
     assert downloaded.status_code == 200
-    assert descriptor["metadata"]["redaction_version"] == "evidence-redaction-v1"
+    assert descriptor["metadata"]["redaction_version"] == "evidence-redaction-v2"
     with zipfile.ZipFile(io.BytesIO(downloaded.content)) as archive:
         members = {name: archive.read(name) for name in archive.namelist()}
     assert b"trace-secret" not in b"".join(members.values())
@@ -183,10 +183,16 @@ def test_ingest_rewrites_trace_zip_before_signed_download(client, settings):
 
 def test_ingest_redacts_structured_and_har_evidence_before_retrieval(client, settings):
     """Fixture secrets and sensitive fields never survive into retrievable evidence."""
+    fixture_password = "fixture-super-" + "secret"
     Path(settings.credentials_file).write_text(
-        "QA_CRED_USER_EMAIL=user@example.test\n"
-        "QA_CRED_USER_PASSWORD=fixture-super-secret\n"
+        f"QA_CRED_USER_PASSWORD={fixture_password}\n"
+        "QA_CRED_USER_EMAIL=fixture-user@example.test\n"
     )
+    from app.services.evidence import evidence_policy
+
+    policy = evidence_policy(settings)
+    assert fixture_password in policy.literal_secrets
+    assert "fixture-user@example.test" in policy.literal_secrets
     run_id = create_run(client)
     storage_key = f"runs/{run_id}/user-test/network.har"
     artifact_path = Path(settings.artifacts_dir) / storage_key
@@ -199,12 +205,30 @@ def test_ingest_redacts_structured_and_har_evidence_before_retrieval(client, set
                         {
                             "request": {
                                 "url": "https://app.example.test/api?token=query-secret&safe=yes#private",
+                                "queryString": [
+                                    {"name": "token", "value": "structured-query-secret"},
+                                    {"name": "safe", "value": "visible-query-value"},
+                                ],
                                 "headers": [
                                     {"name": "Authorization", "value": "Bearer bearer-secret"},
                                     {"name": "Cookie", "value": "sid=session-secret"},
                                 ],
+                                "cookies": [
+                                    {
+                                        "name": "sessionId",
+                                        "value": "structured-request-cookie-secret",
+                                        "domain": "app.example.test",
+                                        "path": "/",
+                                        "httpOnly": True,
+                                        "secure": True,
+                                    }
+                                ],
                                 "postData": {
                                     "mimeType": "application/json",
+                                    "params": [
+                                        {"name": "password", "value": "structured-form-secret"},
+                                        {"name": "safe", "value": "visible-form-value"},
+                                    ],
                                     "text": json.dumps(
                                         {
                                             "password": "fixture-super-secret",
@@ -217,17 +241,49 @@ def test_ingest_redacts_structured_and_har_evidence_before_retrieval(client, set
                                 "headers": [
                                     {"name": "Set-Cookie", "value": "sid=response-secret"}
                                 ],
+                                "cookies": [
+                                    {
+                                        "name": "footprints-crm",
+                                        "value": "structured-response-cookie-secret",
+                                        "domain": ".example.test",
+                                        "path": "/",
+                                        "httpOnly": True,
+                                        "secure": True,
+                                        "sameSite": "Strict",
+                                    }
+                                ],
                                 "content": {
                                     "mimeType": "application/json",
                                     "text": json.dumps(
                                         {
                                             "accessToken": "response-token",
+                                            "ownerEmail": "fixture-user@example.test",
                                             "safe": "visible",
                                         }
                                     ),
                                 },
                             },
-                        }
+                        },
+                        {
+                            "request": {
+                                "cookies": {
+                                    "name": "sessionId",
+                                    "value": "malformed-cookie-object-secret",
+                                    "domain": "app.example.test",
+                                    "unexpected": "malformed-cookie-arbitrary-secret",
+                                    "nested": {
+                                        "unexpected": "nested-malformed-cookie-secret"
+                                    },
+                                }
+                            },
+                            "response": {"cookies": ["malformed-cookie-scalar-secret"]},
+                        },
+                        {
+                            "request": {
+                                "cookies": {"sessionId": "malformed-cookie-map-secret"}
+                            },
+                            "response": {},
+                        },
                     ]
                 }
             }
@@ -286,15 +342,25 @@ def test_ingest_redacts_structured_and_har_evidence_before_retrieval(client, set
     artifact = client.get(f"/api/v1/results/{result['id']}/har", params={"failures_only": "false"})
     assert artifact.status_code == 200
     descriptor = artifact.json()
-    assert descriptor["metadata"]["redaction_version"] == "evidence-redaction-v1"
+    assert descriptor["metadata"]["redaction_version"] == "evidence-redaction-v2"
     downloaded = client.get(descriptor["url"])
     assert downloaded.status_code == 200
     body = downloaded.text
     for secret in (
         "fixture-super-secret",
+        "fixture-user@example.test",
         "bearer-secret",
         "session-secret",
         "response-secret",
+        "structured-request-cookie-secret",
+        "structured-response-cookie-secret",
+        "structured-query-secret",
+        "structured-form-secret",
+        "malformed-cookie-object-secret",
+        "malformed-cookie-scalar-secret",
+        "malformed-cookie-arbitrary-secret",
+        "nested-malformed-cookie-secret",
+        "malformed-cookie-map-secret",
         "response-token",
         "query-secret",
         "url-secret",
@@ -303,6 +369,48 @@ def test_ingest_redacts_structured_and_har_evidence_before_retrieval(client, set
         assert secret not in body
     assert "visible" in body
     assert "[REDACTED]" in body
+    redacted_har = downloaded.json()
+    request_cookie = redacted_har["log"]["entries"][0]["request"]["cookies"][0]
+    response_cookie = redacted_har["log"]["entries"][0]["response"]["cookies"][0]
+    query_params = redacted_har["log"]["entries"][0]["request"]["queryString"]
+    form_params = redacted_har["log"]["entries"][0]["request"]["postData"]["params"]
+    assert request_cookie == {
+        "name": "sessionId",
+        "value": "[REDACTED]",
+        "domain": "app.example.test",
+        "path": "/",
+        "httpOnly": True,
+        "secure": True,
+    }
+    assert response_cookie == {
+        "name": "footprints-crm",
+        "value": "[REDACTED]",
+        "domain": ".example.test",
+        "path": "/",
+        "httpOnly": True,
+        "secure": True,
+        "sameSite": "Strict",
+    }
+    assert query_params == [
+        {"name": "token", "value": "[REDACTED]"},
+        {"name": "safe", "value": "visible-query-value"},
+    ]
+    assert form_params == [
+        {"name": "password", "value": "[REDACTED]"},
+        {"name": "safe", "value": "visible-form-value"},
+    ]
+    malformed_entry = redacted_har["log"]["entries"][1]
+    assert malformed_entry["request"]["cookies"] == {
+        "name": "sessionId",
+        "value": "[REDACTED]",
+        "domain": "app.example.test",
+        "unexpected": "[REDACTED]",
+        "nested": {"unexpected": "[REDACTED]"},
+    }
+    assert malformed_entry["response"]["cookies"] == ["[REDACTED]"]
+    assert redacted_har["log"]["entries"][2]["request"]["cookies"] == {
+        "sessionId": "[REDACTED]"
+    }
 
 
 def test_ingest_rejects_non_zip_trace(client, settings):
@@ -360,7 +468,7 @@ def test_artifact_metadata_declares_no_raw_variant(client, settings):
     result_id = client.get(f"/api/v1/runs/{run_id}/results").json()[0]["id"]
     artifact = client.get(f"/api/v1/results/{result_id}/artifacts").json()[0]
     assert artifact["metadata"] == {
-        "redaction_version": "evidence-redaction-v1",
+        "redaction_version": "evidence-redaction-v2",
         "state": "redacted",
         "raw_variant_retrievable": False,
     }

@@ -396,6 +396,29 @@ describe('ingest: buildFailedAction / isIngestableProject / buildResultIngest', 
     expect(item.viewport).toBe('1440x900');
   });
 
+  test('buildResultIngest normalizes timed_out to the control-plane failed verdict', () => {
+    const item = buildResultIngest({
+      test_name: 'matrix / as user -> render',
+      test_file: 'tests/matrix.spec.ts:26',
+      route_path: '/',
+      role: 'user',
+      status: 'timed_out',
+      duration_ms: 30000,
+      flaky: false,
+      reruns_attempted: 3,
+      reruns_failed: 3,
+      failed_action: { step: null, error: 'Timed out', actual: null },
+      shell_rendered: null,
+      console_summary: [],
+      network_summary: [],
+      dom_excerpt: null,
+      signature_input: null,
+      artifacts: [],
+    });
+    expect(item.status).toBe('failed');
+    expect(item.failed_action?.error).toBe('Timed out');
+  });
+
   test('buildResultIngest records the applied execution pair', () => {
     const item = buildResultIngest({
       test_name: 'matrix / as anon -> render',

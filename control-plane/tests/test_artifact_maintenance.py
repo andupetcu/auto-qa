@@ -7,13 +7,24 @@ from pathlib import Path
 from conftest import create_run, finalize, ingest, result_payload
 
 
-def _seed_expired_artifact(client, settings, *, terminal: bool = True):
+def _seed_expired_artifact(
+    client,
+    settings,
+    *,
+    terminal: bool = True,
+    artifact_type: str = "console",
+    filename: str = "evidence.txt",
+):
     settings.retention_full_days = -1
     run_id = create_run(client)
-    storage_key = f"runs/{run_id}/user-test/evidence.txt"
+    storage_key = f"runs/{run_id}/user-test/{filename}"
     path = Path(settings.artifacts_dir) / storage_key
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("safe evidence")
+    path.write_text(
+        json.dumps({"log": {"entries": []}})
+        if artifact_type == "har"
+        else "safe evidence"
+    )
     ingest(
         client,
         run_id,
@@ -22,7 +33,7 @@ def _seed_expired_artifact(client, settings, *, terminal: bool = True):
                 "failed",
                 artifacts=[
                     {
-                        "type": "console",
+                        "type": artifact_type,
                         "storage_key": storage_key,
                         "bytes": path.stat().st_size,
                     }
@@ -108,6 +119,7 @@ def test_integrity_backfill_is_dry_run_safe_idempotent_and_detects_mutation(clie
     _, _, path = _seed_expired_artifact(client, settings, terminal=False)
     sidecar = artifact_metadata_path(path)
     legacy = json.loads(sidecar.read_text())
+    legacy["redaction_version"] = "evidence-redaction-v1"
     legacy.pop("_sha256")
     legacy.pop("_bytes")
     sidecar.write_text(json.dumps(legacy, sort_keys=True))
@@ -137,3 +149,48 @@ def test_integrity_backfill_is_dry_run_safe_idempotent_and_detects_mutation(clie
         mismatch = backfill_artifact_integrity(session, settings)
     assert mismatch["integrity_mismatches"] == 1
     assert mismatch["updated"] == 0
+
+
+def test_integrity_backfill_rejects_legacy_har_by_artifact_type(client, settings):
+    """A v1 HAR cannot be blessed through a non-HAR or ambiguous DB reference."""
+    from app.db import Artifact
+    from app.services.artifact_cleanup import backfill_artifact_integrity
+    from app.services.evidence import artifact_metadata_path
+
+    _, _, path = _seed_expired_artifact(
+        client,
+        settings,
+        terminal=False,
+        artifact_type="har",
+        filename="network.json",
+    )
+    sidecar = artifact_metadata_path(path)
+    legacy = json.loads(sidecar.read_text())
+    legacy["redaction_version"] = "evidence-redaction-v1"
+    legacy.pop("_sha256")
+    legacy.pop("_bytes")
+    sidecar.write_text(json.dumps(legacy, sort_keys=True))
+
+    storage_key = str(path.relative_to(Path(settings.artifacts_dir)))
+    with client.app.state.SessionLocal() as session:
+        existing = session.query(Artifact).filter(Artifact.storage_key == storage_key).one()
+        session.add(
+            Artifact(
+                id=f"{existing.id}_ambiguous",
+                result_id=existing.result_id,
+                type="trace",
+                storage_key=storage_key,
+                bytes=path.stat().st_size,
+            )
+        )
+        session.commit()
+
+    with client.app.state.SessionLocal() as session:
+        result = backfill_artifact_integrity(session, settings)
+
+    assert result["eligible"] == 0
+    assert result["updated"] == 0
+    assert result["invalid_sidecars"] == 2
+    persisted = json.loads(sidecar.read_text())
+    assert "_sha256" not in persisted
+    assert "_bytes" not in persisted

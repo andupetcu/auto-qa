@@ -13,12 +13,24 @@ from app.problems import ProblemException
 from app.services.route_metadata import pathname_only
 from app.settings import Settings
 
-REDACTION_VERSION = "evidence-redaction-v1"
+REDACTION_VERSION = "evidence-redaction-v2"
 REDACTED = "[REDACTED]"
 
 _BEARER_RE = re.compile(r"(?i)\bbearer\s+[a-z0-9._~+/=-]+")
 _SENSITIVE_ASSIGNMENT_RE = re.compile(
     r"(?i)\b(authorization|cookie|set-cookie|x-api-key|api[_-]?key|token|session|csrf|password|access[_-]?token|refresh[_-]?token)\s*([:=])\s*([^\s&,;]+)"
+)
+_COOKIE_METADATA_KEYS = frozenset(
+    {
+        "name",
+        "path",
+        "domain",
+        "expires",
+        "httponly",
+        "secure",
+        "samesite",
+        "comment",
+    }
 )
 
 
@@ -51,13 +63,7 @@ def _credential_literals(settings: Settings) -> tuple[str, ...]:
             stripped = line.strip()
             if not stripped or stripped.startswith("#") or "=" not in stripped:
                 continue
-            key, _, value = stripped.partition("=")
-            key_upper = key.strip().upper()
-            if not any(
-                marker in key_upper
-                for marker in ("CRED", "PASSWORD", "TOKEN", "SECRET", "SESSION", "API_KEY", "FIXTURE")
-            ):
-                continue
+            _, _, value = stripped.partition("=")
             value = value.strip().strip('"').strip("'")
             if len(value) >= 4:
                 values.add(value)
@@ -115,19 +121,46 @@ def redact_string(value: str, policy: EvidencePolicy) -> str:
     return _redact_url(redacted, policy)
 
 
+def _redact_cookie_container(value: Any, policy: EvidencePolicy) -> Any:
+    """Redact structured cookie values and fail closed on malformed containers."""
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for key, item in value.items():
+            lowered = str(key).lower()
+            if lowered == "value":
+                redacted[key] = REDACTED
+            elif lowered in _COOKIE_METADATA_KEYS and not isinstance(item, (dict, list)):
+                redacted[key] = redact_value(item, policy)
+            elif isinstance(item, (dict, list)):
+                redacted[key] = _redact_cookie_container(item, policy)
+            elif item is None:
+                redacted[key] = None
+            else:
+                redacted[key] = REDACTED
+        return redacted
+    if isinstance(value, list):
+        return [_redact_cookie_container(item, policy) for item in value]
+    if value is None:
+        return None
+    return REDACTED
+
+
 def redact_value(value: Any, policy: EvidencePolicy) -> Any:
     """Recursively redact a JSON-compatible evidence value."""
     if isinstance(value, dict):
-        header_name = value.get("name")
+        named_value_name = value.get("name")
         redacted: dict[str, Any] = {}
         for key, item in value.items():
             lowered = str(key).lower()
             if lowered in policy.json_keys or lowered in policy.headers:
                 redacted[key] = REDACTED
+            elif lowered == "cookies":
+                redacted[key] = _redact_cookie_container(item, policy)
             elif (
-                key == "value"
-                and isinstance(header_name, str)
-                and header_name.lower() in policy.headers
+                lowered == "value"
+                and isinstance(named_value_name, str)
+                and named_value_name.lower()
+                in (policy.headers | policy.query_keys | policy.json_keys)
             ):
                 redacted[key] = REDACTED
             else:
