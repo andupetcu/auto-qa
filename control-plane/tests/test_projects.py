@@ -154,6 +154,25 @@ def test_build_spawn_env_carries_project_payload(client, app, settings):
     assert {"name": "user", "credential_ref": "QA_CRED_USER"} in roles
 
 
+def test_build_spawn_env_honors_explicit_control_plane_url(
+    client, app, settings, monkeypatch
+):
+    from app.db import Project, TestRun
+    from app.services.runner import build_spawn_env
+
+    monkeypatch.setenv("QA_CP_URL", "http://192.168.68.8:8788/api/v1")
+    _create(client)
+    response = client.post(
+        "/api/v1/runs", json={"project": "studio", "routes": ["ALL"]}
+    )
+    with app.state.SessionLocal() as session:
+        run = session.get(TestRun, response.json()["run_id"])
+        project = session.query(Project).filter_by(name="studio").one()
+        env = build_spawn_env(run, project, settings)
+
+    assert env["QA_CP_URL"] == "http://192.168.68.8:8788/api/v1"
+
+
 def test_run_without_roles_defaults_to_project_roles(client, app, settings):
     import json
 

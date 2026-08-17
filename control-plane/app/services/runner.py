@@ -19,6 +19,7 @@ _BROWSER_WORKER_DIR = _REPO_ROOT / "browser-worker"
 def build_spawn_env(run: TestRun, project: Project, settings: Settings) -> dict[str, str]:
     """Pure: the full set of env vars the worker subprocess needs for this run."""
     port = os.environ.get("QA_CP_PORT", "8787")
+    cp_url = os.environ.get("QA_CP_URL") or f"http://127.0.0.1:{port}/api/v1"
     return {
         "QA_RUN_ID": run.id,
         "QA_RUN_BASE_URL": run.base_url,
@@ -27,7 +28,7 @@ def build_spawn_env(run: TestRun, project: Project, settings: Settings) -> dict[
         "QA_RUN_BROWSERS": json.dumps(run.browsers or []),
         "QA_RUN_VIEWPORTS": json.dumps(run.viewports or []),
         "QA_RUN_CAPTURE_POLICY": json.dumps(run.capture_config or {}),
-        "QA_CP_URL": f"http://127.0.0.1:{port}/api/v1",
+        "QA_CP_URL": cp_url.rstrip("/"),
         "QA_API_TOKEN": settings.api_token,
         "QA_ARTIFACTS_DIR": str(Path(settings.artifacts_dir).resolve()),
         "QA_CAPTURE_SHEET_MAX_PIXELS": str(settings.capture_contact_sheet_max_pixels),
