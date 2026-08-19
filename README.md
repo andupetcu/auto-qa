@@ -33,7 +33,7 @@ Trigger a run from the CLI:
 ```bash
 curl -X POST http://127.0.0.1:8787/api/v1/runs \
   -H "Authorization: Bearer $QA_API_TOKEN" -H "Content-Type: application/json" \
-  -d '{"project":"fai","routes":["ALL"],"roles":["user","anon"]}'
+  -d '{"project":"my-app","routes":["ALL"],"roles":["user","anon"]}'
 ```
 
 Runs execute against the project's deployment, capture trace/HAR/console per test,
@@ -45,7 +45,7 @@ Webhooks (`run.started|completed|failed`, HMAC-signed) go to `QA_WEBHOOK_URLS`.
 ## Projects
 
 A **project** is an independently-testable target (its own base URL, routes, role matrix,
-selectors, roles, schedule, parallelism, and credentials). A default `fai` project is
+selectors, roles, schedule, parallelism, and credentials). A default project is
 seeded from config. Agents create and manage projects autonomously over MCP; a project
 becomes runnable once its credentials are set — either via the UI's write-only credentials
 form (`PUT /projects/{id}/credentials` → chmod-600 `.env.credentials`, never in the DB) or

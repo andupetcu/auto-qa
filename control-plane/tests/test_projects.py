@@ -18,11 +18,11 @@ def _create(client, body=None):
 
 def test_default_project_seeded(client):
     projects = client.get("/api/v1/projects").json()
-    fai = next(p for p in projects if p["name"] == "fai")
-    assert fai["id"].startswith("prj_")
-    assert fai["base_url_default"] == "https://app.example.test"
-    assert fai["routes_count"] == 3
-    role_names = {r["name"] for r in fai["roles"]}
+    default_proj = next(p for p in projects if p["name"] == "default")
+    assert default_proj["id"].startswith("prj_")
+    assert default_proj["base_url_default"] == "https://app.example.test"
+    assert default_proj["routes_count"] == 3
+    role_names = {r["name"] for r in default_proj["roles"]}
     assert role_names == {"user", "anon"}
 
 
@@ -95,10 +95,10 @@ def test_patch_replaces_routes_and_merges_config(client):
 
 def test_route_isolation_between_projects(client):
     _create(client)  # studio also has "/"
-    fai_routes = client.get("/api/v1/routes").json()  # default project
-    assert {x["path"] for x in fai_routes} == {"/", "/dashboard/analytics",
+    default_routes = client.get("/api/v1/routes").json()  # default project
+    assert {x["path"] for x in default_routes} == {"/", "/dashboard/analytics",
                                                "/dashboard/reports"}
-    # a path that exists only in fai is invalid for a studio run
+    # a path that exists only in default project is invalid for a studio run
     r = client.post("/api/v1/runs",
                     json={"project": "studio", "routes": ["/dashboard/reports"]})
     assert r.status_code == 400
@@ -115,7 +115,7 @@ def test_runs_are_project_scoped(client):
 
     default_run_id = create_run(client)
     default_run = client.get(f"/api/v1/runs/{default_run_id}").json()
-    assert default_run["project"] == "fai"
+    assert default_run["project"] == "default"
 
 
 def test_rerun_inherits_project(client):
@@ -192,4 +192,4 @@ def test_run_without_roles_defaults_to_project_roles(client, app, settings):
 def test_capabilities_lists_projects(client):
     _create(client)
     caps = client.get("/api/v1/capabilities").json()
-    assert set(caps["projects"]) >= {"fai", "studio"}
+    assert set(caps["projects"]) >= {"default", "studio"}

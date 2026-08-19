@@ -64,10 +64,10 @@ def test_matrix_only_reflects_latest_completed_run(client):
     assert row["actuals"]["user"] == "passed"
 
 
-def test_matrix_defaults_to_fai_project_and_falls_back_to_yaml(client):
+def test_matrix_defaults_to_default_project_and_falls_back_to_yaml(client):
     matrix = client.get("/api/v1/matrix").json()
     paths = {row["path"] for row in matrix}
-    # fai has an empty role_matrix in test settings, and the real role-matrix.yaml
+    # default project has an empty role_matrix in test settings, and the real role-matrix.yaml
     # fallback path won't exist relative to a tmp settings dir, so it tolerates
     # a missing file and falls back to {} rather than raising.
     assert isinstance(matrix, list)
@@ -75,7 +75,7 @@ def test_matrix_defaults_to_fai_project_and_falls_back_to_yaml(client):
         assert set(row.keys()) == {"path", "source", "expectations", "actuals"}
 
 
-def test_matrix_falls_back_to_role_matrix_yaml_for_fai(client, settings):
+def test_matrix_falls_back_to_role_matrix_yaml_for_default(client, settings):
     from pathlib import Path
 
     yaml_path = Path(settings.role_matrix_fallback_path)
@@ -84,7 +84,7 @@ def test_matrix_falls_back_to_role_matrix_yaml_for_fai(client, settings):
         "/:\n  user: render\n  anon: redirect\n"
     )
 
-    matrix = client.get("/api/v1/matrix", params={"project": "fai"}).json()
+    matrix = client.get("/api/v1/matrix", params={"project": "default"}).json()
     row = next(r for r in matrix if r["path"] == "/")
     assert row["expectations"] == {"user": "render", "anon": "redirect"}
     assert row["actuals"] == {"user": None, "anon": None}

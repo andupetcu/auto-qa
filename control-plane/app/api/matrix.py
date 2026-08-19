@@ -1,7 +1,7 @@
 """GET /matrix: route x role expectations vs actuals.
 
 expectations come from project.role_matrix (falling back to browser-worker's
-role-matrix.yaml for the default `fai` project only, when role_matrix is empty).
+role-matrix.yaml for the default project only, when role_matrix is empty).
 actuals come from the most recent per-(route, role) test_result status in the
 project's latest COMPLETED run.
 """

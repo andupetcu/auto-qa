@@ -131,42 +131,42 @@ async def test_cancel_run_via_mcp(mcp, client):
 async def test_schedule_lifecycle_via_mcp(mcp):
     created = await mcp.call_tool(
         "create_schedule",
-        {"project": "fai", "cron": "*/15 * * * *", "enabled": True},
+        {"project": "default", "cron": "*/15 * * * *", "enabled": True},
     )
     created_payload = created[1] if isinstance(created, tuple) else created
     assert created_payload["cron"] == "*/15 * * * *"
 
     listed = await mcp.call_tool("list_schedules")
     listed_payload = listed[1] if isinstance(listed, tuple) else listed
-    assert listed_payload["schedules"][0]["project"] == "fai"
+    assert listed_payload["schedules"][0]["project"] == "default"
 
     updated = await mcp.call_tool(
-        "update_schedule", {"project": "fai", "cron": "0 * * * *"}
+        "update_schedule", {"project": "default", "cron": "0 * * * *"}
     )
     updated_payload = updated[1] if isinstance(updated, tuple) else updated
     assert updated_payload["cron"] == "0 * * * *"
 
-    paused = await mcp.call_tool("pause_schedule", {"project": "fai"})
+    paused = await mcp.call_tool("pause_schedule", {"project": "default"})
     paused_payload = paused[1] if isinstance(paused, tuple) else paused
     assert paused_payload["enabled"] is False
 
-    resumed = await mcp.call_tool("resume_schedule", {"project": "fai"})
+    resumed = await mcp.call_tool("resume_schedule", {"project": "default"})
     resumed_payload = resumed[1] if isinstance(resumed, tuple) else resumed
     assert resumed_payload["enabled"] is True
 
-    fired = await mcp.call_tool("run_schedule_now", {"project": "fai"})
+    fired = await mcp.call_tool("run_schedule_now", {"project": "default"})
     fired_payload = fired[1] if isinstance(fired, tuple) else fired
     assert fired_payload["status"] == "queued"
 
     history = await mcp.call_tool(
-        "get_schedule_history", {"project": "fai", "limit": 10}
+        "get_schedule_history", {"project": "default", "limit": 10}
     )
     history_payload = history[1] if isinstance(history, tuple) else history
     assert history_payload["runs"][0]["id"] == fired_payload["run_id"]
 
-    deleted = await mcp.call_tool("delete_schedule", {"project": "fai"})
+    deleted = await mcp.call_tool("delete_schedule", {"project": "default"})
     deleted_payload = deleted[1] if isinstance(deleted, tuple) else deleted
-    assert deleted_payload == {"project": "fai", "deleted": True}
+    assert deleted_payload == {"project": "default", "deleted": True}
 
 
 async def test_get_failure_bundles_empty_run(mcp):

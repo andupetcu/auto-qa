@@ -13,13 +13,13 @@ from app.services.schedule_execution import ScheduleOverlapError, trigger_schedu
 
 def test_schedule_lifecycle_and_history(client):
     created = client.put(
-        "/api/v1/schedules/fai",
+        "/api/v1/schedules/default",
         json={"cron": "*/15 * * * *", "enabled": True},
     )
     assert created.status_code == 200, created.text
     schedule = created.json()
     assert schedule["id"].startswith("sched_")
-    assert schedule["project"] == "fai"
+    assert schedule["project"] == "default"
     assert schedule["cron"] == "*/15 * * * *"
     assert schedule["timezone"] == "UTC"
     assert schedule["overlap_policy"] == "skip"
@@ -28,50 +28,50 @@ def test_schedule_lifecycle_and_history(client):
     assert client.get(f"/api/v1/schedules/{schedule['id']}").status_code == 200
 
     listed = client.get("/api/v1/schedules").json()
-    assert [row["project"] for row in listed] == ["fai"]
-    assert client.get("/api/v1/schedules/fai").json()["cron"] == "*/15 * * * *"
+    assert [row["project"] for row in listed] == ["default"]
+    assert client.get("/api/v1/schedules/default").json()["cron"] == "*/15 * * * *"
 
     updated = client.patch(
-        "/api/v1/schedules/fai", json={"cron": "0 * * * *"}
+        "/api/v1/schedules/default", json={"cron": "0 * * * *"}
     )
     assert updated.status_code == 200
     assert updated.json()["cron"] == "0 * * * *"
 
-    paused = client.post("/api/v1/schedules/fai/pause")
+    paused = client.post("/api/v1/schedules/default/pause")
     assert paused.status_code == 200
     assert paused.json()["enabled"] is False
     assert paused.json()["next_run_at"] is None
 
-    resumed = client.post("/api/v1/schedules/fai/resume")
+    resumed = client.post("/api/v1/schedules/default/resume")
     assert resumed.status_code == 200
     assert resumed.json()["enabled"] is True
 
-    fired = client.post("/api/v1/schedules/fai/run")
+    fired = client.post("/api/v1/schedules/default/run")
     assert fired.status_code == 202, fired.text
     run_id = fired.json()["run_id"]
 
-    duplicate = client.post("/api/v1/schedules/fai/run")
+    duplicate = client.post("/api/v1/schedules/default/run")
     assert duplicate.status_code == 409
     assert "active run" in duplicate.json()["detail"]
 
-    history = client.get("/api/v1/schedules/fai/history").json()
+    history = client.get("/api/v1/schedules/default/history").json()
     assert history[0]["id"] == run_id
     assert history[0]["trigger"] == "schedule"
 
-    deleted = client.delete("/api/v1/schedules/fai")
-    assert deleted.json() == {"project": "fai", "deleted": True}
-    assert client.get("/api/v1/schedules/fai").status_code == 404
+    deleted = client.delete("/api/v1/schedules/default")
+    assert deleted.json() == {"project": "default", "deleted": True}
+    assert client.get("/api/v1/schedules/default").status_code == 404
 
 
 async def test_new_schedule_starts_at_next_advertised_boundary(client, app):
     with app.state.SessionLocal() as session:
-        project = session.query(Project).filter_by(name="fai").one()
+        project = session.query(Project).filter_by(name="default").one()
         project.created_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
         project.last_scheduled_at = None
         session.commit()
 
     response = client.put(
-        "/api/v1/schedules/fai",
+        "/api/v1/schedules/default",
         json={"cron": "0 0 * * *", "enabled": True},
     )
     schedule = response.json()
@@ -79,19 +79,19 @@ async def test_new_schedule_starts_at_next_advertised_boundary(client, app):
     next_run = datetime.fromisoformat(schedule["next_run_at"])
 
     await _scheduler_tick(app, now=next_run - timedelta(seconds=1))
-    fai_runs = [
-        run for run in client.get("/api/v1/runs").json() if run["project"] == "fai"
+    default_runs = [
+        run for run in client.get("/api/v1/runs").json() if run["project"] == "default"
     ]
-    assert fai_runs == []
+    assert default_runs == []
 
 
 def test_concurrent_schedule_fires_create_only_one_run(app, settings, client):
     client.put(
-        "/api/v1/schedules/fai",
+        "/api/v1/schedules/default",
         json={"cron": "0 * * * *", "enabled": True},
     )
     with app.state.SessionLocal() as session:
-        project_id = session.query(Project).filter_by(name="fai").one().id
+        project_id = session.query(Project).filter_by(name="default").one().id
 
     barrier = Barrier(2)
     now = datetime.now(timezone.utc)
@@ -120,11 +120,11 @@ def test_concurrent_schedule_fires_create_only_one_run(app, settings, client):
 
 def test_schedule_and_manual_race_create_only_one_active_run(app, settings, client):
     client.put(
-        "/api/v1/schedules/fai",
+        "/api/v1/schedules/default",
         json={"cron": "0 * * * *", "enabled": True},
     )
     with app.state.SessionLocal() as session:
-        project_id = session.query(Project).filter_by(name="fai").one().id
+        project_id = session.query(Project).filter_by(name="default").one().id
 
     barrier = Barrier(2)
     now = datetime.now(timezone.utc)
@@ -176,7 +176,7 @@ def test_schedule_and_manual_race_create_only_one_active_run(app, settings, clie
 
 def test_schedule_rejects_invalid_cron(client):
     response = client.put(
-        "/api/v1/schedules/fai", json={"cron": "not a cron", "enabled": True}
+        "/api/v1/schedules/default", json={"cron": "not a cron", "enabled": True}
     )
     assert response.status_code == 400
     assert response.json()["title"] == "Invalid cron expression"
@@ -190,6 +190,6 @@ def test_schedule_requires_existing_project(client):
 
 
 def test_schedule_get_requires_existing_schedule(client):
-    response = client.get("/api/v1/schedules/fai")
+    response = client.get("/api/v1/schedules/default")
     assert response.status_code == 404
     assert response.json()["title"] == "Schedule not found"

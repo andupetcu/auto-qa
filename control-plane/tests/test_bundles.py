@@ -49,7 +49,7 @@ def test_bundle_shape(client):
     assert {"route": "/campaigns/reports", "role": "user"} in b["affected"]
     assert b["test"]["name"]
     assert b["test"]["file"]
-    assert b["app"] == {"project": "fai", "base_url": "https://app.example.test",
+    assert b["app"] == {"project": "default", "base_url": "https://app.example.test",
                         "version": None}
     # exemplar = first by severity then duration: the 900ms one
     assert b["test"]["duration_ms"] == 900

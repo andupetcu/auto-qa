@@ -48,9 +48,9 @@ def test_webhook_delivery_envelope_and_signature(tmp_path):
     started = json.loads(received[0].content)
     assert started["data"]["run_id"] == rid
     assert started["data"]["base_url"] == "https://app.example.test"
-    assert started["data"]["project"] == "fai"
+    assert started["data"]["project"] == "default"
     completed = json.loads(received[1].content)
-    assert completed["data"]["project"] == "fai"
+    assert completed["data"]["project"] == "default"
     assert completed["data"]["totals"] == {"passed": 0, "failed": 0,
                                            "skipped": 0, "flaky": 0}
     assert completed["sequence"] > started["sequence"]

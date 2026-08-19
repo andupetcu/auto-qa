@@ -19,12 +19,12 @@ def test_create_project_with_schedule_fields(client):
 
 
 def test_default_project_has_schedule_defaults(client):
-    fai = client.get("/api/v1/projects/fai").json()
-    assert fai["enabled"] is True
-    assert fai["max_parallel"] == 2
-    assert fai["schedule_cron"] is None
-    assert fai["next_run_at"] is None
-    assert fai["credentials"] == {"username": None, "has_password": False, "has_totp": False}
+    default_proj = client.get("/api/v1/projects/default").json()
+    assert default_proj["enabled"] is True
+    assert default_proj["max_parallel"] == 2
+    assert default_proj["schedule_cron"] is None
+    assert default_proj["next_run_at"] is None
+    assert default_proj["credentials"] == {"username": None, "has_password": False, "has_totp": False}
 
 
 def test_next_run_at_present_when_cron_set(client):

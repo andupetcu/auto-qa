@@ -100,8 +100,8 @@ describe('roleProjectGrep', () => {
 });
 
 describe('sessionStatePath', () => {
-  test('namespaces storageState by project, default fai', () => {
-    expect(sessionStatePath({}, 'user')).toBe('.auth/fai/user.json');
+  test('namespaces storageState by project, default project', () => {
+    expect(sessionStatePath({}, 'user')).toBe('.auth/default/user.json');
     expect(sessionStatePath({ QA_RUN_PROJECT: 'studio' }, 'admin'))
       .toBe('.auth/studio/admin.json');
   });

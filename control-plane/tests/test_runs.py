@@ -119,7 +119,7 @@ def test_project_readiness_defaults_are_snapshotted_and_run_override_wins(client
             {"urlGlob": "*/api/*", "methods": ["GET"], "resourceTypes": ["fetch"]}
         ],
     }
-    patched = client.patch("/api/v1/projects/fai", json={"selectors": {"readiness": readiness}})
+    patched = client.patch("/api/v1/projects/default", json={"selectors": {"readiness": readiness}})
     assert patched.status_code == 200
 
     inherited = client.post("/api/v1/runs", json={"routes": ["ALL"]})
@@ -213,7 +213,7 @@ def test_list_runs_filters_orders_and_paginates(client):
     """Run list filters and cursor pagination are enforced by the public API."""
     oldest_id = create_run(client)
     finalize(client, oldest_id, status="completed")
-    newest_fai_id = create_run(client)
+    newest_default_id = create_run(client)
 
     project = client.post(
         "/api/v1/projects",
@@ -228,10 +228,10 @@ def test_list_runs_filters_orders_and_paginates(client):
     newest_id = create_run(client, project="studio", routes=["/"])
 
     all_runs = client.get("/api/v1/runs", params={"limit": 2}).json()
-    assert [run["id"] for run in all_runs] == [newest_id, newest_fai_id]
+    assert [run["id"] for run in all_runs] == [newest_id, newest_default_id]
 
     page_two = client.get(
-        "/api/v1/runs", params={"limit": 2, "before": newest_fai_id}
+        "/api/v1/runs", params={"limit": 2, "before": newest_default_id}
     ).json()
     assert [run["id"] for run in page_two] == [oldest_id]
 
@@ -242,7 +242,7 @@ def test_list_runs_filters_orders_and_paginates(client):
     assert [run["id"] for run in studio] == [newest_id]
 
     manual = client.get("/api/v1/runs", params={"trigger": "manual"}).json()
-    assert {run["id"] for run in manual} >= {oldest_id, newest_fai_id, newest_id}
+    assert {run["id"] for run in manual} >= {oldest_id, newest_default_id, newest_id}
 
 
 def test_get_missing_run_404_problem(client):
@@ -308,7 +308,7 @@ def test_run_creation_rejects_multi_browser_or_viewport_matrix(client):
     response = client.post(
         "/api/v1/runs",
         json={
-            "project": "fai",
+            "project": "default",
             "routes": ["/"],
             "browsers": ["chromium", "firefox"],
             "viewports": ["1440x900"],
@@ -319,7 +319,7 @@ def test_run_creation_rejects_multi_browser_or_viewport_matrix(client):
     response = client.post(
         "/api/v1/runs",
         json={
-            "project": "fai",
+            "project": "default",
             "routes": ["/"],
             "browsers": ["chromium"],
             "viewports": ["1440x900", "390x844"],
@@ -330,7 +330,7 @@ def test_run_creation_rejects_multi_browser_or_viewport_matrix(client):
 
 def test_run_creation_rejects_role_not_configured_for_project(client):
     updated = client.patch(
-        "/api/v1/projects/fai",
+        "/api/v1/projects/default",
         json={"roles": [{"name": "anon"}]},
     )
     assert updated.status_code == 200
@@ -338,7 +338,7 @@ def test_run_creation_rejects_role_not_configured_for_project(client):
     response = client.post(
         "/api/v1/runs",
         json={
-            "project": "fai",
+            "project": "default",
             "routes": ["/"],
             "roles": ["user", "anon"],
             "browsers": ["chromium"],

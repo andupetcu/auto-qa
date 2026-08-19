@@ -8,7 +8,7 @@ from app.db import Project, Route
 from app.ids import new_id
 from app.settings import Settings
 
-DEFAULT_PROJECT_NAME = "fai"
+DEFAULT_PROJECT_NAME = "default"
 
 
 def load_routes_config(path: str) -> list[str]:
@@ -36,7 +36,7 @@ def default_roles_from_names(role_names: list[str]) -> list[dict]:
 
 
 def ensure_default_project(session: Session, settings: Settings) -> Project:
-    """Ensure the default `fai` project exists, seeded from settings. Idempotent."""
+    """Ensure the default project exists, seeded from settings. Idempotent."""
     project = session.query(Project).filter_by(name=DEFAULT_PROJECT_NAME).first()
     if project is None:
         project = Project(

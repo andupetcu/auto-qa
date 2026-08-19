@@ -136,6 +136,6 @@ export function roleProjectGrep(role: string): RegExp {
 }
 
 export function sessionStatePath(env: Env, role: string): string {
-  const project = env.QA_RUN_PROJECT ?? 'fai';
+  const project = env.QA_RUN_PROJECT ?? 'default';
   return `.auth/${project}/${role}.json`;
 }
