@@ -1,8 +1,8 @@
-# Route × role expectations (arch §3.3), SPA semantics per docs/plans/v0.1-plan.md:
+# Route × role expectations (arch §3.3), SPA semantics:
 #   render   — app shell visible, no auth gate
 #   redirect — client-side auth gate shown (gate text / login form / ?auth=login)
 #   403      — forbidden marker (reserved, unused in v0.1)
 /:                            { user: render, anon: render }
-/campaigns/campaign-library:  { user: render, anon: redirect }
-/campaigns/reports:           { user: render, anon: redirect }
-/in-store-measurement/in-store-traffic-forecast: { user: render, anon: redirect }
+/dashboard/analytics:         { user: render, anon: redirect }
+/dashboard/reports:           { user: render, anon: redirect }
+/admin/users:                 { user: render, anon: redirect }

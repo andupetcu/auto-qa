@@ -24,18 +24,22 @@ router = APIRouter(dependencies=[Depends(require_auth)])
 
 DEFAULT_ROLES = [{"name": "user", "credential_ref": "QA_CRED_USER"}, {"name": "anon"}]
 
-# project and role names become filesystem path segments (.auth/<project>/<role>.json)
-# and subprocess env values on the worker — since agents mint these autonomously via
-# MCP, constrain them to a safe slug so a stray name can't escape the sessions dir.
-_SAFE_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+# Role names become filesystem path segments (.auth/<project>/<role>.json) and subprocess
+# env values on the worker — constrain to safe slug.
+_SAFE_ROLE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
 
-def _require_safe(kind: str, name: str) -> None:
-    if not _SAFE_NAME.match(name or ""):
+def _require_safe_role(name: str) -> None:
+    if not _SAFE_ROLE.match(name or ""):
         raise ProblemException(
-            400, f"Invalid {kind} name",
-            f"{kind} name must match [a-z0-9][a-z0-9_-]{{0,63}}: {name!r}",
+            400, "Invalid role name",
+            f"Role name must match [a-z0-9][a-z0-9_-]{{0,63}}: {name!r}",
         )
+
+
+def _require_nonempty_name(name: str) -> None:
+    if not name or not name.strip():
+        raise ProblemException(400, "Invalid project name", "Project name cannot be empty")
 
 
 class RoleIn(BaseModel):
@@ -69,6 +73,7 @@ class ProjectRunIn(BaseModel):
 
 
 class ProjectPatch(BaseModel):
+    name: str | None = None
     base_url_default: str | None = None
     roles: list[RoleIn] | None = None
     selectors: dict | None = None
@@ -165,7 +170,7 @@ def _replace_routes(session: Session, project: Project, paths: list[str]) -> Non
 
 def _validate_roles(roles: list[RoleIn] | None) -> None:
     for r in roles or []:
-        _require_safe("role", r.name)
+        _require_safe_role(r.name)
 
 
 @router.post("/projects", status_code=201)
@@ -174,7 +179,7 @@ def create_project(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ):
-    _require_safe("project", body.name)
+    _require_nonempty_name(body.name)
     _validate_roles(body.roles)
     target_origin(body.base_url_default)
     if settings.target_allowed_origin_list:
@@ -243,6 +248,16 @@ def patch_project(
     project = _get_project_or_404(session, name)
     was_enabled = project.enabled
 
+    if body.name is not None:
+        _require_nonempty_name(body.name)
+        if body.name != project.name:
+            existing = session.query(Project).filter_by(name=body.name).first()
+            if existing is not None:
+                raise ProblemException(
+                    409, "Project already exists",
+                    f"A project named {body.name} already exists",
+                )
+            project.name = body.name
     if body.base_url_default is not None:
         target_origin(body.base_url_default)
         if settings.target_allowed_origin_list:

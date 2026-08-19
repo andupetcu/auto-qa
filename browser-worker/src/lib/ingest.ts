@@ -139,6 +139,40 @@ export async function postResults(cfg: RunnerConfig, results: ResultIngest[]): P
   }
 }
 
+/**
+ * Incremental ingestion: posts results in batches of `batchSize`. Returns
+ * the count of successfully ingested results and an optional error from the
+ * first batch that failed (subsequent batches are skipped once quota is hit).
+ */
+export interface BatchIngestResult {
+  ingested: number;
+  error: string | null;
+}
+
+export async function postResultsBatched(
+  cfg: RunnerConfig,
+  results: ResultIngest[],
+  batchSize: number = 20,
+): Promise<BatchIngestResult> {
+  if (results.length === 0) return { ingested: 0, error: null };
+
+  let ingested = 0;
+  for (let i = 0; i < results.length; i += batchSize) {
+    const batch = results.slice(i, i + batchSize);
+    const res = await fetch(`${cfg.cpUrl}/internal/runs/${cfg.runId}/results`, {
+      method: 'POST',
+      headers: authHeaders(cfg),
+      body: JSON.stringify(batch),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      return { ingested, error: `POST results batch failed: ${res.status} ${text}` };
+    }
+    ingested += batch.length;
+  }
+  return { ingested, error: null };
+}
+
 export async function postFinalize(
   cfg: RunnerConfig,
   status: 'completed' | 'failed' | 'auth_expired',

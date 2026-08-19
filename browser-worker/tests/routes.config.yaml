@@ -1,6 +1,13 @@
 # Authoritative route list (discovery source: config). The control plane reads this file.
+# Replace these with your actual application routes.
 routes:
   - /
-  - /campaigns/campaign-library
-  - /campaigns/reports
-  - /in-store-measurement/in-store-traffic-forecast
+  - /dashboard
+  - /dashboard/analytics
+  - /dashboard/reports
+  - /settings/general
+  - /settings/profile
+  - /settings/notifications
+  - /admin/users
+  - /admin/roles
+  - /admin/integrations

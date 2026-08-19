@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Drawer,
@@ -62,10 +62,9 @@ const useStyles = makeStyles({
   },
 });
 
-function routesToText(project: Project | null): string {
-  // routes aren't returned verbatim by GET /projects (only routes_count);
-  // an empty textarea with the ALL sentinel is the safe default for edits.
-  return project ? 'ALL' : '/\n/reports\n/reports/:id';
+function routesToText(paths: string[] | null): string {
+  if (!paths || paths.length === 0) return 'ALL';
+  return paths.join('\n');
 }
 
 function parseRoutes(text: string): string[] | 'ALL' {
@@ -107,6 +106,13 @@ export function ProjectDrawer({
   const styles = useStyles();
   const queryClient = useQueryClient();
 
+  // Fetch actual routes for existing project when drawer opens
+  const routesQuery = useQuery({
+    queryKey: ['project-routes', project?.name],
+    queryFn: () => endpoints.routes(project!.name),
+    enabled: open && !!project,
+  });
+
   const [name, setName] = useState('');
   const [baseUrl, setBaseUrl] = useState('https://');
   const [routesText, setRoutesText] = useState('/\n/reports\n/reports/:id');
@@ -123,7 +129,8 @@ export function ProjectDrawer({
     if (project) {
       setName(project.name);
       setBaseUrl(project.base_url_default);
-      setRoutesText(routesToText(project));
+      // Routes will be populated by the routesQuery effect below
+      setRoutesText('ALL');
       setRolesText(rolesToText(project.roles));
       setCron(project.schedule_cron ?? '');
       setMaxParallel(project.max_parallel);
@@ -140,6 +147,14 @@ export function ProjectDrawer({
     setCredTotp('');
     setShowPass(false);
   }, [open, project]);
+
+  // Once routes are fetched, populate textarea with actual paths
+  useEffect(() => {
+    if (routesQuery.data && open && project) {
+      const paths = routesQuery.data.map((r) => r.path);
+      setRoutesText(routesToText(paths));
+    }
+  }, [routesQuery.data, open, project]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {

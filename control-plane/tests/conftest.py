@@ -8,8 +8,8 @@ def make_settings(tmp_path, **overrides):
     (tmp_path / "routes.yaml").write_text(
         "routes:\n"
         "  - /\n"
-        "  - /campaigns/campaign-library\n"
-        "  - /campaigns/reports\n"
+        "  - /dashboard/analytics\n"
+        "  - /dashboard/reports\n"
     )
     defaults = dict(
         api_token="testtoken",

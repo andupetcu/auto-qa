@@ -96,11 +96,11 @@ def test_patch_replaces_routes_and_merges_config(client):
 def test_route_isolation_between_projects(client):
     _create(client)  # studio also has "/"
     fai_routes = client.get("/api/v1/routes").json()  # default project
-    assert {x["path"] for x in fai_routes} == {"/", "/campaigns/campaign-library",
-                                               "/campaigns/reports"}
+    assert {x["path"] for x in fai_routes} == {"/", "/dashboard/analytics",
+                                               "/dashboard/reports"}
     # a path that exists only in fai is invalid for a studio run
     r = client.post("/api/v1/runs",
-                    json={"project": "studio", "routes": ["/campaigns/reports"]})
+                    json={"project": "studio", "routes": ["/dashboard/reports"]})
     assert r.status_code == 400
     assert r.headers["content-type"].startswith("application/problem+json")
 

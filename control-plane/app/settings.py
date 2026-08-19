@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     evidence_max_body_bytes: int = 16384
     evidence_max_artifacts_per_result: int = 20
     evidence_max_artifact_bytes_per_result: int = 104857600
-    evidence_max_artifact_bytes_per_run: int = 524288000
+    evidence_max_artifact_bytes_per_run: int = 5368709120
     evidence_project_quota_bytes: int = 5368709120
     evidence_min_free_disk_bytes: int = 1073741824
     evidence_orphan_grace_seconds: int = 3600

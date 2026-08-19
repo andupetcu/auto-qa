@@ -24,7 +24,7 @@ describe('parseReport route privacy', () => {
     const parsed = parseReport({
       suites: [{
         specs: [{
-          title: 'matrix /campaigns/reports?view=secret#chart as user -> render',
+          title: 'matrix /dashboard/reports?view=secret#chart as user -> render',
           file: 'matrix.spec.ts',
           line: 12,
           tests: [{ projectName: 'user', results: [{ status: 'passed', duration: 1 }] }],
@@ -32,7 +32,7 @@ describe('parseReport route privacy', () => {
       }],
     });
 
-    expect(parsed[0]?.route_path).toBe('/campaigns/reports');
+    expect(parsed[0]?.route_path).toBe('/dashboard/reports');
   });
 
   test('sanitizes manifest fallback routes and rejects protocol-relative metadata', () => {

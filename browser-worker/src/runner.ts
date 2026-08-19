@@ -28,10 +28,12 @@ import {
   resolveTopFrame,
   postStarted,
   postResults,
+  postResultsBatched,
   postFinalize,
   postProgress,
   type ArtifactEntry,
   type ResultIngest,
+  type BatchIngestResult,
 } from './lib/ingest';
 import { findAuthExpiredFile } from './lib/authExpired';
 import { isApplicableResult, parseReport, resolveRoutePath, type ParsedResult } from './reportParser';
@@ -366,13 +368,20 @@ async function runToCompletion(cfg: RunnerConfig): Promise<void> {
 
   const authExpiredPath = findAuthExpiredFile(outputDir);
 
-  log(`posting ${ingestList.length} result(s)`);
-  try {
-    await postResults(cfg, ingestList);
-  } catch (err) {
-    const detail = `result ingestion failed: ${(err as Error).message}`.slice(0, 2000);
+  log(`posting ${ingestList.length} result(s) in batches`);
+  const batchResult: BatchIngestResult = await postResultsBatched(cfg, ingestList, 20);
+
+  if (batchResult.error) {
+    const detail = `result ingestion partially failed after ${batchResult.ingested}/${ingestList.length} results: ${batchResult.error}`.slice(0, 2000);
     console.error(`[runner] ${detail}`);
-    await finalizeAndExit(cfg, 'failed', detail);
+    // If some results were ingested, finalize as completed-with-warnings rather than
+    // marking the whole run failed — the control plane already persisted partial data.
+    if (batchResult.ingested > 0) {
+      log(`${batchResult.ingested} results ingested before quota hit — finalizing as completed`);
+      await finalizeAndExit(cfg, 'completed', detail);
+    } else {
+      await finalizeAndExit(cfg, 'failed', detail);
+    }
     return;
   }
 

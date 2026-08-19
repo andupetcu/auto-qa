@@ -87,7 +87,15 @@ def _create_run_row_unlocked(
     validate_routes: bool = True,
 ) -> TestRun:
     """Persist and spawn one run while the caller holds the project run lock."""
-    if validate_routes and routes != ["ALL"]:
+    # Resolve "ALL" sentinel: expand to the actual stored route paths so the worker
+    # receives an explicit list and can generate the test matrix without needing to
+    # query the control-plane API or rely on a fallback YAML file.
+    if routes == ["ALL"]:
+        db_routes = session.query(Route).filter_by(project_id=project.id).order_by(Route.id).all()
+        if db_routes:
+            routes = [r.path for r in db_routes]
+        # If no routes in DB, keep ["ALL"] — worker falls back to role-matrix.yaml
+    elif validate_routes:
         known_paths = {
             r.path for r in session.query(Route).filter_by(project_id=project.id).all()
         }

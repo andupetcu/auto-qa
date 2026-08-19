@@ -19,7 +19,7 @@ const REPORT = {
           ],
         },
         {
-          title: 'matrix /campaigns/reports as user -> render',
+          title: 'matrix /dashboard/reports as user -> render',
           file: 'matrix.spec.ts',
           line: 12,
           tests: [
@@ -66,7 +66,7 @@ describe('parseReport', () => {
       duration_ms: 812,
     });
     expect(failed).toMatchObject({
-      route_path: '/campaigns/reports',
+      route_path: '/dashboard/reports',
       status: 'failed',
     });
     expect(failed.error_message).toContain('Timed out');

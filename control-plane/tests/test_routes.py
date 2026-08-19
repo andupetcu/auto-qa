@@ -3,7 +3,7 @@ def test_config_routes_discovered_on_startup(client):
     assert r.status_code == 200
     routes = r.json()
     paths = {x["path"] for x in routes}
-    assert paths == {"/", "/campaigns/campaign-library", "/campaigns/reports"}
+    assert paths == {"/", "/dashboard/analytics", "/dashboard/reports"}
     for x in routes:
         assert x["id"].startswith("rt_")
         assert x["discovery_source"] == "config"

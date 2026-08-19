@@ -17,13 +17,13 @@ describe('signatureInput', () => {
     const sig = signatureInput({
       error: 'Timed out 5000ms waiting for locator',
       topFrame: 'src/components/X.tsx:64:18',
-      route: '/campaigns/:id/edit',
+      route: '/orders/:id/edit',
       role: 'user',
     });
     expect(sig).toEqual({
       normalized_error: 'Timed out <n>ms waiting for locator',
       top_stack_frame: 'src/components/X.tsx:64:18',
-      route: '/campaigns/:id/edit',
+      route: '/orders/:id/edit',
       role: 'user',
     });
   });

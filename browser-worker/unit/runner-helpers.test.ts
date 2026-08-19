@@ -167,7 +167,7 @@ describe('slug: slugify / resultKey', () => {
   });
 
   test('resultKey stays within 60 chars for long test names', () => {
-    const k = resultKey('user', 'matrix ' + '/campaigns/reports/very/long/route/path'.repeat(3) + ' as user -> render');
+    const k = resultKey('user', 'matrix ' + '/dashboard/reports/very/long/route/path'.repeat(3) + ' as user -> render');
     expect(k.length).toBeLessThanOrEqual(60);
   });
 });
@@ -287,8 +287,8 @@ describe('flake: verdict + grep helpers', () => {
 
   test('escapeRegExp escapes regex metacharacters', () => {
     expect(escapeRegExp('a.b*c?')).toBe('a\\.b\\*c\\?');
-    expect(escapeRegExp('matrix /campaigns/reports as user -> render')).toBe(
-      'matrix /campaigns/reports as user -> render'.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+    expect(escapeRegExp('matrix /dashboard/reports as user -> render')).toBe(
+      'matrix /dashboard/reports as user -> render'.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
     );
   });
 
@@ -444,9 +444,9 @@ describe('ingest: buildFailedAction / isIngestableProject / buildResultIngest', 
 
   test('buildResultIngest carries through failed_action, flake counters and artifacts', () => {
     const item = buildResultIngest({
-      test_name: 'matrix /campaigns/reports as user -> render',
+      test_name: 'matrix /dashboard/reports as user -> render',
       test_file: 'tests/matrix.spec.ts:26',
-      route_path: '/campaigns/reports',
+      route_path: '/dashboard/reports',
       role: 'user',
       status: 'failed',
       duration_ms: 9000,

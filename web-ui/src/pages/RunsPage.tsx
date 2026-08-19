@@ -1,6 +1,6 @@
 /** @fileoverview Paginated run history with live status refresh. */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -14,6 +14,7 @@ import {
   makeStyles,
   tokens,
   type TableColumnDefinition,
+  type DataGridProps,
 } from '@fluentui/react-components';
 
 import { endpoints } from '../api/endpoints';
@@ -81,6 +82,11 @@ export function RunsPage() {
   const styles = useStyles();
   const navigate = useNavigate();
 
+  const [sortState, setSortState] = useState<DataGridProps['sortState']>({
+    sortColumn: 'started',
+    sortDirection: 'descending',
+  });
+
   const { data: runs, isLoading } = useQuery({
     queryKey: ['runs', 'history', { limit: 50 }],
     queryFn: () => endpoints.runs({ limit: 50 }),
@@ -102,16 +108,19 @@ export function RunsPage() {
             {r.parent_run_id ? <span className={styles.parentTag}>rerun</span> : null}
           </span>
         ),
+        compare: (a, b) => a.id.localeCompare(b.id),
       }),
       createTableColumn<Run>({
         columnId: 'status',
         renderHeaderCell: () => 'Status',
         renderCell: (r) => <RunStatusBadge status={r.status} />,
+        compare: (a, b) => a.status.localeCompare(b.status),
       }),
       createTableColumn<Run>({
         columnId: 'trigger',
         renderHeaderCell: () => 'Trigger',
         renderCell: (r) => <span className={styles.muted}>{r.trigger}</span>,
+        compare: (a, b) => a.trigger.localeCompare(b.trigger),
       }),
       createTableColumn<Run>({
         columnId: 'target',
@@ -126,6 +135,7 @@ export function RunsPage() {
             </div>
           </div>
         ),
+        compare: (a, b) => a.project.localeCompare(b.project),
       }),
       createTableColumn<Run>({
         columnId: 'results',
@@ -139,6 +149,11 @@ export function RunsPage() {
           }
           return <TotalsInline totals={r.totals} />;
         },
+        compare: (a, b) => {
+          const aTotal = a.totals ? a.totals.passed + a.totals.failed + a.totals.skipped : 0;
+          const bTotal = b.totals ? b.totals.passed + b.totals.failed + b.totals.skipped : 0;
+          return aTotal - bTotal;
+        },
       }),
       createTableColumn<Run>({
         columnId: 'started',
@@ -146,11 +161,25 @@ export function RunsPage() {
         renderCell: (r) => (
           <span className={styles.muted}>{r.started_at ? new Date(r.started_at).toLocaleString() : '—'}</span>
         ),
+        compare: (a, b) => {
+          const aTime = a.started_at ? new Date(a.started_at).getTime() : 0;
+          const bTime = b.started_at ? new Date(b.started_at).getTime() : 0;
+          return aTime - bTime;
+        },
       }),
       createTableColumn<Run>({
         columnId: 'duration',
         renderHeaderCell: () => 'Duration',
         renderCell: (r) => <Mono>{formatDurationRange(r.started_at, r.ended_at)}</Mono>,
+        compare: (a, b) => {
+          const aDur = a.started_at && a.ended_at
+            ? new Date(a.ended_at).getTime() - new Date(a.started_at).getTime()
+            : 0;
+          const bDur = b.started_at && b.ended_at
+            ? new Date(b.ended_at).getTime() - new Date(b.started_at).getTime()
+            : 0;
+          return aDur - bDur;
+        },
       }),
     ],
     [styles],
@@ -176,6 +205,9 @@ export function RunsPage() {
             columns={columns}
             getRowId={(item) => item.id}
             size="small"
+            sortable
+            sortState={sortState}
+            onSortChange={(_e, nextState) => setSortState(nextState)}
           >
             <DataGridHeader>
               <DataGridRow>

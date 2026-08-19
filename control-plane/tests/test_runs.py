@@ -252,11 +252,11 @@ def test_get_missing_run_404_problem(client):
 
 
 def _run_with_one_failure(client):
-    rid = create_run(client, routes=["/", "/campaigns/reports"])
+    rid = create_run(client, routes=["/", "/dashboard/reports"])
     ingest(client, rid, [
         result_payload("passed", route="/", role="user"),
-        result_payload("failed", route="/campaigns/reports", role="user",
-                       signature_input=sig_input(route="/campaigns/reports")),
+        result_payload("failed", route="/dashboard/reports", role="user",
+                       signature_input=sig_input(route="/dashboard/reports")),
     ])
     finalize(client, rid)
     return rid
@@ -270,14 +270,14 @@ def test_rerun_failed_scope(client):
     assert new_id != rid
     new_run = client.get(f"/api/v1/runs/{new_id}").json()
     assert new_run["parent_run_id"] == rid
-    assert new_run["requested_routes"] == ["/campaigns/reports"]
+    assert new_run["requested_routes"] == ["/dashboard/reports"]
 
 
 def test_rerun_failed_scope_ignores_null_route_suite_failures(client):
-    rid = create_run(client, routes=["/", "/campaigns/reports"])
+    rid = create_run(client, routes=["/", "/dashboard/reports"])
     ingest(client, rid, [
-        result_payload("failed", route="/campaigns/reports", role="user",
-                       signature_input=sig_input(route="/campaigns/reports")),
+        result_payload("failed", route="/dashboard/reports", role="user",
+                       signature_input=sig_input(route="/dashboard/reports")),
         result_payload("failed", route=None, role="user",
                        test_name="reports deeplink renders",
                        signature_input={"normalized_error": "x", "top_stack_frame": "",
@@ -287,7 +287,7 @@ def test_rerun_failed_scope_ignores_null_route_suite_failures(client):
     r = client.post(f"/api/v1/runs/{rid}/rerun", json={"scope": "failed"})
     assert r.status_code == 202
     new_run = client.get(f"/api/v1/runs/{r.json()['run_id']}").json()
-    assert new_run["requested_routes"] == ["/campaigns/reports"]
+    assert new_run["requested_routes"] == ["/dashboard/reports"]
 
 
 def test_rerun_failed_scope_with_only_suite_failures_is_400(client):
@@ -354,7 +354,7 @@ def test_run_creation_rejects_role_not_configured_for_project(client):
 def test_rerun_single_result_preserves_case_matrix(client, app, settings):
     run_id = create_run(
         client,
-        routes=["/campaigns/reports"],
+        routes=["/dashboard/reports"],
         roles=["user", "anon"],
         browsers=["firefox"],
         viewports=["390x844"],
@@ -365,12 +365,12 @@ def test_rerun_single_result_preserves_case_matrix(client, app, settings):
         [
             result_payload(
                 "failed",
-                route="/campaigns/reports",
+                route="/dashboard/reports",
                 role="anon",
                 browser="firefox",
                 viewport="390x844",
                 signature_input=sig_input(
-                    route="/campaigns/reports", role="anon"
+                    route="/dashboard/reports", role="anon"
                 ),
             )
         ],
@@ -386,7 +386,7 @@ def test_rerun_single_result_preserves_case_matrix(client, app, settings):
     assert response.status_code == 202, response.text
     retry = client.get(f"/api/v1/runs/{response.json()['run_id']}").json()
     assert retry["parent_run_id"] == run_id
-    assert retry["requested_routes"] == ["/campaigns/reports"]
+    assert retry["requested_routes"] == ["/dashboard/reports"]
     assert retry["requested_roles"] == ["anon"]
     assert retry["browsers"] == ["firefox"]
     assert retry["viewports"] == ["390x844"]
@@ -407,5 +407,5 @@ def test_rerun_full_scope_with_base_url_override(client):
     r = client.post(f"/api/v1/runs/{rid}/rerun",
                     json={"scope": "full", "base_url": "https://staging.example.test"})
     new_run = client.get(f"/api/v1/runs/{r.json()['run_id']}").json()
-    assert new_run["requested_routes"] == ["/", "/campaigns/reports"]
+    assert new_run["requested_routes"] == ["/", "/dashboard/reports"]
     assert new_run["base_url"] == "https://staging.example.test"

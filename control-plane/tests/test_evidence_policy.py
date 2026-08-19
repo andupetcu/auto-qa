@@ -243,7 +243,7 @@ def test_ingest_redacts_structured_and_har_evidence_before_retrieval(client, set
                                 ],
                                 "cookies": [
                                     {
-                                        "name": "footprints-crm",
+                                        "name": "app-session",
                                         "value": "structured-response-cookie-secret",
                                         "domain": ".example.test",
                                         "path": "/",
@@ -383,7 +383,7 @@ def test_ingest_redacts_structured_and_har_evidence_before_retrieval(client, set
         "secure": True,
     }
     assert response_cookie == {
-        "name": "footprints-crm",
+        "name": "app-session",
         "value": "[REDACTED]",
         "domain": ".example.test",
         "path": "/",

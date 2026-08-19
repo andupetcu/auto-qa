@@ -89,13 +89,32 @@ export function resolveRoles(env: Env): Role[] {
   );
 }
 
-// QA_RUN_ROLE_MATRIX JSON wins when present and a non-empty object; else the fallback
-// (role-matrix.yaml) loader's result.
+// QA_RUN_ROLE_MATRIX JSON wins when present and a non-empty object; else if
+// QA_RUN_ROUTES provides specific routes, auto-generate a matrix (user: render,
+// anon: redirect for each route); else the fallback (role-matrix.yaml) loader's result.
 export function resolveMatrix(env: Env, loadYamlFallback: () => Matrix): Matrix {
   const fromRunRoleMatrix = tryParseJson(env.QA_RUN_ROLE_MATRIX);
   if (isPlainObject(fromRunRoleMatrix) && Object.keys(fromRunRoleMatrix).length > 0) {
     return fromRunRoleMatrix as Matrix;
   }
+
+  // When specific routes or ALL are requested but no role_matrix was configured,
+  // auto-generate expectations from the route list. This handles the common case
+  // of projects that have routes stored in the DB but no explicit role_matrix.
+  const routes = parseListEnv(env.QA_RUN_ROUTES);
+  if (routes && routes.length > 0 && !routes.includes('ALL')) {
+    const roles = parseListEnv(env.QA_RUN_ROLES) ?? ['user', 'anon'];
+    const generated: Matrix = {};
+    for (const route of routes) {
+      const entry: Record<string, unknown> = {};
+      for (const role of roles) {
+        entry[role] = role === 'anon' ? 'redirect' : 'render';
+      }
+      generated[route] = entry;
+    }
+    return generated;
+  }
+
   return loadYamlFallback();
 }
 
