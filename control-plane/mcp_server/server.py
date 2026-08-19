@@ -127,12 +127,14 @@ def build_mcp(app, settings) -> QAMCPServer:
 
     @inner.tool()
     async def capabilities() -> dict:
+        """Return server capabilities, version, and available tool categories."""
         return await _get("/api/v1/capabilities")
 
     handlers["capabilities"] = capabilities
 
     @inner.tool()
     async def list_routes(project: str | None = None) -> dict:
+        """List all configured routes for a project. Returns path, roles, and route metadata."""
         data = await _get("/api/v1/routes", {"project": project})
         return {"routes": data}
 
@@ -148,6 +150,7 @@ def build_mcp(app, settings) -> QAMCPServer:
         base_url: str | None = None,
         app_version: str | None = None,
     ) -> dict:
+        """Queue a new QA test run. Pass routes=['ALL'] to test all routes, or specific paths. Returns run_id."""
         body = {"routes": routes}
         if project is not None:
             body["project"] = project
@@ -167,6 +170,7 @@ def build_mcp(app, settings) -> QAMCPServer:
 
     @inner.tool()
     async def get_run_status(run_id: str) -> dict:
+        """Get full status of a test run including totals, timing, and progress."""
         return await _get(f"/api/v1/runs/{run_id}")
 
     handlers["get_run_status"] = get_run_status
@@ -180,8 +184,9 @@ def build_mcp(app, settings) -> QAMCPServer:
         browser: str | None = None,
         flaky: bool | None = None,
         limit: int | None = None,
+        offset: int | None = None,
     ) -> dict:
-        """Return bounded case-level results for a run with optional filters."""
+        """Return paginated case-level results for a run with optional filters."""
         data = await _get(
             f"/api/v1/runs/{run_id}/results",
             {
@@ -191,9 +196,10 @@ def build_mcp(app, settings) -> QAMCPServer:
                 "browser": browser,
                 "flaky": flaky,
                 "limit": limit,
+                "offset": offset,
             },
         )
-        return {"run_id": run_id, "count": len(data), "results": data}
+        return {"run_id": run_id, "total": data["total"], "offset": data["offset"], "limit": data["limit"], "count": len(data["items"]), "results": data["items"]}
 
     handlers["get_run_results"] = get_run_results
 
@@ -210,6 +216,7 @@ def build_mcp(app, settings) -> QAMCPServer:
         severity_min: str | None = None,
         include_flaky: bool | None = None,
     ) -> dict:
+        """Get clustered failure bundles for a run — groups similar failures by pattern, severity, and affected routes."""
         data = await _get(
             f"/api/v1/runs/{run_id}/bundles",
             {"severity_min": severity_min, "include_flaky": include_flaky},
@@ -222,6 +229,7 @@ def build_mcp(app, settings) -> QAMCPServer:
     async def get_console_logs(
         result_id: str, level: str | None = None, limit: int | None = None
     ) -> dict:
+        """Get browser console logs for a specific test result. Filter by level (error, warn, info)."""
         data = await _get(
             f"/api/v1/results/{result_id}/console", {"level": level, "limit": limit}
         )
@@ -235,6 +243,7 @@ def build_mcp(app, settings) -> QAMCPServer:
         failures_only: bool | None = None,
         body_bytes: int | None = None,
     ) -> dict:
+        """Get HTTP Archive (HAR) network entries for a test result. Use failures_only=true for error requests."""
         data = await _get(
             f"/api/v1/results/{result_id}/har",
             {"failures_only": failures_only, "body_bytes": body_bytes},
@@ -268,6 +277,7 @@ def build_mcp(app, settings) -> QAMCPServer:
 
     @inner.tool()
     async def get_artifacts(result_id: str, types: str | None = None) -> dict:
+        """List stored artifacts (screenshots, traces, HAR files) for a test result."""
         data = await _get(f"/api/v1/results/{result_id}/artifacts", {"types": types})
         return {"artifacts": data}
 
@@ -309,6 +319,7 @@ def build_mcp(app, settings) -> QAMCPServer:
         role_matrix: dict | None = None,
         routes: list[str] | None = None,
     ) -> dict:
+        """Create a new project with base URL, routes, and optional role/selector config."""
         body: dict = {"name": name, "base_url_default": base_url}
         if roles is not None:
             body["roles"] = roles
@@ -331,6 +342,7 @@ def build_mcp(app, settings) -> QAMCPServer:
         role_matrix: dict | None = None,
         routes: list[str] | None = None,
     ) -> dict:
+        """Update an existing project's base URL, routes, roles, or selectors."""
         body: dict = {}
         if base_url is not None:
             body["base_url_default"] = base_url
@@ -348,6 +360,7 @@ def build_mcp(app, settings) -> QAMCPServer:
 
     @inner.tool()
     async def list_projects() -> dict:
+        """List all configured projects with their base URLs, routes, and settings."""
         data = await _get("/api/v1/projects")
         return {"projects": data}
 

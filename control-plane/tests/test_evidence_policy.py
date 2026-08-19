@@ -58,7 +58,7 @@ def test_ingest_enforces_cumulative_run_byte_quota(client, settings):
 
     assert response.status_code == 413
     assert response.json()["title"] == "Artifact quota exceeded"
-    assert len(client.get(f"/api/v1/runs/{run_id}/results").json()) == 1
+    assert len(client.get(f"/api/v1/runs/{run_id}/results").json()["items"]) == 1
 
 
 def test_ingest_enters_low_disk_safety_mode_before_artifact_processing(client, settings):
@@ -85,7 +85,7 @@ def test_ingest_enters_low_disk_safety_mode_before_artifact_processing(client, s
 
     assert response.status_code == 507
     assert response.json()["title"] == "Evidence storage unavailable"
-    assert client.get(f"/api/v1/runs/{run_id}/results").json() == []
+    assert client.get(f"/api/v1/runs/{run_id}/results").json()["items"] == []
 
 
 def test_ingest_rejects_artifact_count_over_result_quota(client, settings):
@@ -109,7 +109,7 @@ def test_ingest_rejects_artifact_count_over_result_quota(client, settings):
 
     assert response.status_code == 413
     assert response.json()["title"] == "Artifact quota exceeded"
-    assert client.get(f"/api/v1/runs/{run_id}/results").json() == []
+    assert client.get(f"/api/v1/runs/{run_id}/results").json()["items"] == []
 
 
 def test_ingest_uses_actual_file_size_for_result_byte_quota(client, settings):
@@ -135,7 +135,7 @@ def test_ingest_uses_actual_file_size_for_result_byte_quota(client, settings):
 
     assert response.status_code == 413
     assert response.json()["title"] == "Artifact quota exceeded"
-    assert client.get(f"/api/v1/runs/{run_id}/results").json() == []
+    assert client.get(f"/api/v1/runs/{run_id}/results").json()["items"] == []
 
 
 def test_ingest_rewrites_trace_zip_before_signed_download(client, settings):
@@ -168,7 +168,7 @@ def test_ingest_rewrites_trace_zip_before_signed_download(client, settings):
             )
         ],
     )
-    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()[0]["id"]
+    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()["items"][0]["id"]
     descriptor = client.get(f"/api/v1/results/{result_id}/artifacts").json()[0]
     downloaded = client.get(descriptor["url"])
 
@@ -332,7 +332,7 @@ def test_ingest_redacts_structured_and_har_evidence_before_retrieval(client, set
         ],
     )
 
-    result = client.get(f"/api/v1/runs/{run_id}/results").json()[0]
+    result = client.get(f"/api/v1/runs/{run_id}/results").json()["items"][0]
     serialized = json.dumps(result)
     assert "fixture-super-secret" not in serialized
     assert "bearer-secret" not in serialized
@@ -424,7 +424,7 @@ def test_ingest_rejects_non_zip_trace(client, settings):
     )
     assert response.status_code == 400
     assert response.json()["title"] == "Invalid artifact"
-    assert client.get(f"/api/v1/runs/{run_id}/results").json() == []
+    assert client.get(f"/api/v1/runs/{run_id}/results").json()["items"] == []
 
 
 def test_ingest_rejects_unknown_artifact_type(client, settings):
@@ -437,7 +437,7 @@ def test_ingest_rejects_unknown_artifact_type(client, settings):
         }])],
     )
     assert response.status_code == 422
-    assert client.get(f"/api/v1/runs/{run_id}/results").json() == []
+    assert client.get(f"/api/v1/runs/{run_id}/results").json()["items"] == []
 
 
 def test_ingest_rejects_symlink_escape(client, settings, tmp_path):
@@ -465,7 +465,7 @@ def test_artifact_metadata_declares_no_raw_variant(client, settings):
     ingest(client, run_id, [result_payload("passed", artifacts=[{
         "type": "console", "storage_key": storage_key,
     }])])
-    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()[0]["id"]
+    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()["items"][0]["id"]
     artifact = client.get(f"/api/v1/results/{result_id}/artifacts").json()[0]
     assert artifact["metadata"] == {
         "redaction_version": "evidence-redaction-v2",

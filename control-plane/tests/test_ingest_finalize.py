@@ -29,7 +29,7 @@ def test_ingest_accepts_null_route_path_for_suite_tests(client):
                        test_name="reports deeplink renders"),
     ])
     finalize(client, rid)
-    results = client.get(f"/api/v1/runs/{rid}/results").json()
+    results = client.get(f"/api/v1/runs/{rid}/results").json()["items"]
     assert results[0]["route_path"] is None
 
 
@@ -55,7 +55,7 @@ def test_late_started_and_ingest_cannot_resurrect_terminal_run(client, terminal_
     assert started.json()["status"] == terminal_status
     assert ingestion.status_code == 409
     assert client.get(f"/api/v1/runs/{rid}").json()["status"] == terminal_status
-    assert client.get(f"/api/v1/runs/{rid}/results").json() == []
+    assert client.get(f"/api/v1/runs/{rid}/results").json()["items"] == []
 
 
 def test_finalize_auth_expired(client):
@@ -78,7 +78,7 @@ def test_results_listing_and_artifact_rows(client, settings):
                                    "bytes": artifact_path.stat().st_size}]),
     ])
     finalize(client, rid)
-    results = client.get(f"/api/v1/runs/{rid}/results").json()
+    results = client.get(f"/api/v1/runs/{rid}/results").json()["items"]
     assert len(results) == 1
     res = results[0]
     assert res["id"].startswith("res_")

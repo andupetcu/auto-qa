@@ -31,7 +31,7 @@ def _seed(client, with_har_artifact=False):
         "failed", signature_input=sig_input(),
         console_summary=CONSOLE, network_summary=NETWORK, artifacts=artifacts)])
     finalize(client, rid)
-    return client.get(f"/api/v1/runs/{rid}/results").json()[0]["id"]
+    return client.get(f"/api/v1/runs/{rid}/results").json()["items"][0]["id"]
 
 
 def test_console_default_errors_only(client):

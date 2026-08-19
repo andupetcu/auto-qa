@@ -376,7 +376,7 @@ def test_rerun_single_result_preserves_case_matrix(client, app, settings):
         ],
     )
     finalize(client, run_id)
-    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()[0]["id"]
+    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()["items"][0]["id"]
 
     response = client.post(
         f"/api/v1/runs/{run_id}/rerun",

@@ -69,12 +69,12 @@ def _diagnostic_result(client, settings):
             {"type": "visual_manifest", "storage_key": str(manifest_path.relative_to(settings.artifacts_dir))},
         ],
     )])
-    return run_id, client.get(f"/api/v1/runs/{run_id}/results").json()[0]["id"]
+    return run_id, client.get(f"/api/v1/runs/{run_id}/results").json()["items"][0]["id"]
 
 
 def test_diagnostics_distinguish_collector_health_from_event_count(client, settings):
     run_id, result_id = _diagnostic_result(client, settings)
-    stored = client.get(f"/api/v1/runs/{run_id}/results").json()
+    stored = client.get(f"/api/v1/runs/{run_id}/results").json()["items"]
     assert stored[0]["route_path"] == "/resolved/deep-link"
 
     network = client.get(f"/api/v1/results/{result_id}/network-summary").json()
@@ -103,7 +103,7 @@ def test_diagnostics_distinguish_collector_health_from_event_count(client, setti
 def test_missing_collectors_are_explicit_not_captured(client):
     run_id = create_run(client)
     ingest(client, run_id, [result_payload("passed")])
-    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()[0]["id"]
+    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()["items"][0]["id"]
 
     assert client.get(f"/api/v1/results/{result_id}/network-summary").json()["collector_status"] == "not_captured"
     assert client.get(f"/api/v1/results/{result_id}/runtime-summary").json()["collector_status"] == "not_captured"

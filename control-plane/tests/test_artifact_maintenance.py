@@ -43,7 +43,7 @@ def _seed_expired_artifact(
     )
     if terminal:
         finalize(client, run_id)
-    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()[0]["id"]
+    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()["items"][0]["id"]
     return run_id, result_id, path
 
 

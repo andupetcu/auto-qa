@@ -311,9 +311,10 @@ def list_results(
     browser: str | None = None,
     flaky: bool | None = None,
     limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     session: Session = Depends(get_session),
 ):
-    """Return a bounded, filterable set of case results for one run."""
+    """Return a paginated, filterable set of case results for one run."""
     _get_run_or_404(session, run_id)
     query = session.query(TestResult).filter_by(run_id=run_id)
     if status is not None:
@@ -326,8 +327,9 @@ def list_results(
         query = query.filter(TestResult.browser == browser)
     if flaky is not None:
         query = query.filter(TestResult.flaky == flaky)
-    rows = query.order_by(TestResult.id).limit(limit).all()
-    return [serialize_result(row) for row in rows]
+    total = query.count()
+    rows = query.order_by(TestResult.id).offset(offset).limit(limit).all()
+    return {"items": [serialize_result(row) for row in rows], "total": total, "offset": offset, "limit": limit}
 
 
 @router.get("/runs/{run_id}/bundles")

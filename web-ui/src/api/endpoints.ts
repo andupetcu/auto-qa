@@ -55,7 +55,11 @@ export const endpoints = {
     api.post<RunCreateResponse>(`/runs/${encodeURIComponent(id)}/rerun`, input),
   cancelRun: (id: string) =>
     api.post<RunCreateResponse>(`/runs/${encodeURIComponent(id)}/cancel`, {}),
-  runResults: (id: string) => api.get<TestResult[]>(`/runs/${encodeURIComponent(id)}/results`),
+  runResults: (id: string, params?: { limit?: number; offset?: number; status?: string }) =>
+    api.get<{ items: TestResult[]; total: number; offset: number; limit: number }>(
+      `/runs/${encodeURIComponent(id)}/results`,
+      params,
+    ),
   runBundles: (id: string, severityMin?: string) =>
     api.get<FailureBundle[]>(`/runs/${encodeURIComponent(id)}/bundles`, {
       severity_min: severityMin,

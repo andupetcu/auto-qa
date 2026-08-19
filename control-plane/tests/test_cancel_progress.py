@@ -64,7 +64,7 @@ def test_late_worker_callbacks_are_rejected_after_cancel(client):
     assert ingestion.status_code == 409
     assert finalized.status_code == 200
     assert client.get(f"/api/v1/runs/{rid}").json()["status"] == "canceled"
-    assert client.get(f"/api/v1/runs/{rid}/results").json() == []
+    assert client.get(f"/api/v1/runs/{rid}/results").json()["items"] == []
 
 
 def test_progress_ignored_after_terminal(client):

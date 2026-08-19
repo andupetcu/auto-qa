@@ -199,7 +199,7 @@ async def test_mcp_projects_structured_diagnostics(mcp, client):
             },
         ],
     )])
-    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()[0]["id"]
+    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()["items"][0]["id"]
 
     network = await mcp.call_tool("get_network_summary", {"result_id": result_id})
     network = network[1] if isinstance(network, tuple) else network
@@ -218,7 +218,7 @@ async def test_mcp_projects_structured_diagnostics(mcp, client):
 async def test_get_visual_evidence_exposes_explicit_not_captured_state(mcp, client):
     run_id = create_run(client)
     ingest(client, run_id, [result_payload("passed")])
-    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()[0]["id"]
+    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()["items"][0]["id"]
 
     out = await mcp.call_tool("get_visual_evidence", {"result_id": result_id})
     payload = out[1] if isinstance(out, tuple) else out

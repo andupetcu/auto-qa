@@ -112,7 +112,7 @@ export function CoveragePage() {
 
   const resultsQuery = useQuery({
     queryKey: ['runResults', latestRun?.id],
-    queryFn: () => endpoints.runResults(latestRun!.id),
+    queryFn: () => endpoints.runResults(latestRun!.id, { limit: 500 }),
     enabled: Boolean(latestRun),
   });
 
@@ -120,15 +120,16 @@ export function CoveragePage() {
     (row) => Object.keys(row.expectations).length === 0,
   );
 
-  const flakyResults = (resultsQuery.data ?? []).filter((r) => r.flaky);
+  const resultsItems = resultsQuery.data?.items ?? [];
+  const flakyResults = resultsItems.filter((r) => r.flaky);
 
   const flakeRate = useMemo(() => {
-    const results = resultsQuery.data ?? [];
+    const results = resultsItems;
     const nonSkipped = results.filter((r) => r.status !== 'skipped');
     if (nonSkipped.length === 0) return null;
     const flaky = results.filter((r) => r.flaky).length;
     return (flaky / nonSkipped.length) * 100;
-  }, [resultsQuery.data]);
+  }, [resultsItems]);
 
   const totalRoutePairs = (matrixQuery.data ?? []).length;
   const coveredPairs = (matrixQuery.data ?? []).filter(

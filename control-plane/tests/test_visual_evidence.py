@@ -83,7 +83,7 @@ def test_visual_evidence_projection_is_ordered_signed_and_result_bound(client, s
             )
         ],
     )
-    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()[0]["id"]
+    result_id = client.get(f"/api/v1/runs/{run_id}/results").json()["items"][0]["id"]
 
     response = client.get(f"/api/v1/results/{result_id}/visual-evidence")
     assert response.status_code == 200
@@ -147,7 +147,7 @@ def test_visual_manifest_hash_mismatch_is_rejected_before_persistence(client, se
     )
     assert response.status_code == 400
     assert response.json()["title"] == "Visual evidence integrity failure"
-    assert client.get(f"/api/v1/runs/{run_id}/results").json() == []
+    assert client.get(f"/api/v1/runs/{run_id}/results").json()["items"] == []
 
 
 def test_visual_artifacts_without_manifest_are_rejected(client, settings):
@@ -164,7 +164,7 @@ def test_visual_artifacts_without_manifest_are_rejected(client, settings):
     )
     assert response.status_code == 400
     assert response.json()["title"] == "Visual evidence integrity failure"
-    assert client.get(f"/api/v1/runs/{run_id}/results").json() == []
+    assert client.get(f"/api/v1/runs/{run_id}/results").json()["items"] == []
 
 
 def test_manifest_rejects_unreferenced_extra_screenshot(client, settings):
@@ -193,7 +193,7 @@ def test_manifest_rejects_unreferenced_extra_screenshot(client, settings):
         json=[result_payload("passed", artifacts=artifacts)],
     )
     assert response.status_code == 400
-    assert client.get(f"/api/v1/runs/{run_id}/results").json() == []
+    assert client.get(f"/api/v1/runs/{run_id}/results").json()["items"] == []
 
 
 def test_manifest_rejects_visual_artifact_from_another_result_directory(client, settings):
@@ -220,7 +220,7 @@ def test_manifest_rejects_visual_artifact_from_another_result_directory(client, 
         ])],
     )
     assert response.status_code == 400
-    assert client.get(f"/api/v1/runs/{run_id}/results").json() == []
+    assert client.get(f"/api/v1/runs/{run_id}/results").json()["items"] == []
 
 
 def test_manifest_rejects_duplicate_retained_frame_reference(client, settings):
@@ -247,4 +247,4 @@ def test_manifest_rejects_duplicate_retained_frame_reference(client, settings):
         ])],
     )
     assert response.status_code == 400
-    assert client.get(f"/api/v1/runs/{run_id}/results").json() == []
+    assert client.get(f"/api/v1/runs/{run_id}/results").json()["items"] == []

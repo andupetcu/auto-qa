@@ -117,6 +117,8 @@ export function RunDetailPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<'results' | 'bundles'>('results');
+  const [resultsPage, setResultsPage] = useState(0);
+  const RESULTS_PAGE_SIZE = 100;
 
   const resultParam = searchParams.get('result');
   const bundleParam = searchParams.get('bundle');
@@ -136,11 +138,15 @@ export function RunDetailPage() {
   const previousRunStatus = useRef<Run['status'] | undefined>(undefined);
 
   const resultsQuery = useQuery({
-    queryKey: ['runResults', runId],
-    queryFn: () => endpoints.runResults(runId as string),
+    queryKey: ['runResults', runId, resultsPage],
+    queryFn: () => endpoints.runResults(runId as string, { limit: RESULTS_PAGE_SIZE, offset: resultsPage * RESULTS_PAGE_SIZE }),
     enabled: Boolean(runId),
     refetchInterval: runIsActive ? 2000 : false,
   });
+
+  const resultsData = resultsQuery.data?.items ?? [];
+  const resultsTotal = resultsQuery.data?.total ?? 0;
+  const totalPages = Math.ceil(resultsTotal / RESULTS_PAGE_SIZE);
 
   const bundlesQuery = useQuery({
     queryKey: ['runBundles', runId],
@@ -220,8 +226,8 @@ export function RunDetailPage() {
   );
 
   const selectedResult = useMemo(
-    () => resultsQuery.data?.find((r) => r.id === resultParam) ?? null,
-    [resultsQuery.data, resultParam],
+    () => resultsData.find((r) => r.id === resultParam) ?? null,
+    [resultsData, resultParam],
   );
   const matchingBundle = useMemo(() => {
     if (!selectedResult) return null;
@@ -352,7 +358,7 @@ export function RunDetailPage() {
           selectedValue={tab}
           onTabSelect={(_, data) => setTab(data.value as 'results' | 'bundles')}
         >
-          <Tab value="results">Results {resultsQuery.data ? `(${resultsQuery.data.length})` : ''}</Tab>
+          <Tab value="results">Results {resultsTotal > 0 ? `(${resultsTotal})` : ''}</Tab>
           <Tab value="bundles">
             Failure bundles {bundlesQuery.data ? `(${bundlesQuery.data.length})` : ''}
           </Tab>
@@ -364,31 +370,56 @@ export function RunDetailPage() {
           <div className={styles.gridWrap} style={{ padding: '32px' }}>
             Loading results…
           </div>
-        ) : !resultsQuery.data || resultsQuery.data.length === 0 ? (
+        ) : !resultsData || resultsData.length === 0 ? (
           <EmptyState message="No results yet for this run." />
         ) : (
-          <div className={styles.gridWrap}>
-            <DataGrid items={resultsQuery.data} columns={columns} getRowId={(t) => t.id} size="small">
-              <DataGridHeader>
-                <DataGridRow>
-                  {({ renderHeaderCell }) => (
-                    <DataGridHeaderCell>{renderHeaderCell()}</DataGridHeaderCell>
-                  )}
-                </DataGridRow>
-              </DataGridHeader>
-              <DataGridBody<TestResult>>
-                {({ item, rowId }) => (
-                  <DataGridRow<TestResult>
-                    key={rowId}
-                    className={styles.row}
-                    onClick={() => openResult(item.id)}
-                  >
-                    {({ renderCell }) => <DataGridCell>{renderCell(item)}</DataGridCell>}
+          <>
+            <div className={styles.gridWrap}>
+              <DataGrid items={resultsData} columns={columns} getRowId={(t) => t.id} size="small">
+                <DataGridHeader>
+                  <DataGridRow>
+                    {({ renderHeaderCell }) => (
+                      <DataGridHeaderCell>{renderHeaderCell()}</DataGridHeaderCell>
+                    )}
                   </DataGridRow>
-                )}
-              </DataGridBody>
-            </DataGrid>
-          </div>
+                </DataGridHeader>
+                <DataGridBody<TestResult>>
+                  {({ item, rowId }) => (
+                    <DataGridRow<TestResult>
+                      key={rowId}
+                      className={styles.row}
+                      onClick={() => openResult(item.id)}
+                    >
+                      {({ renderCell }) => <DataGridCell>{renderCell(item)}</DataGridCell>}
+                    </DataGridRow>
+                  )}
+                </DataGridBody>
+              </DataGrid>
+            </div>
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '12px', justifyContent: 'center' }}>
+                <Button
+                  size="small"
+                  appearance="subtle"
+                  disabled={resultsPage === 0}
+                  onClick={() => setResultsPage((p) => Math.max(0, p - 1))}
+                >
+                  ← Prev
+                </Button>
+                <span style={{ fontSize: '12px', color: tokens.colorNeutralForeground3 }}>
+                  Page {resultsPage + 1} of {totalPages} ({resultsTotal} results)
+                </span>
+                <Button
+                  size="small"
+                  appearance="subtle"
+                  disabled={resultsPage >= totalPages - 1}
+                  onClick={() => setResultsPage((p) => p + 1)}
+                >
+                  Next →
+                </Button>
+              </div>
+            )}
+          </>
         )
       ) : bundlesQuery.isLoading ? (
         <div className={styles.gridWrap} style={{ padding: '32px' }}>
